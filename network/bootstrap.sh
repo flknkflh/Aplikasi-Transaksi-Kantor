@@ -71,6 +71,10 @@ fi
 export PATH="${SAMPLES_DIR}/bin:${PATH}"
 export FABRIC_CFG_PATH="${SAMPLES_DIR}/config"
 
+echo "== 2b/5: building a chaincode builder image with Go 1.27 (see network/ccenv/Dockerfile) =="
+docker build -q --build-arg FABRIC_VERSION="${FABRIC_VERSION}" -t "hyperledger/fabric-ccenv:${FABRIC_VERSION}" \
+    -t hyperledger/fabric-ccenv:2.5 -t hyperledger/fabric-ccenv:latest "${SCRIPT_DIR}/ccenv"
+
 echo "== 3/5: bringing up the 2-org test network and creating channel '${CHANNEL_NAME}' =="
 cd "${SAMPLES_DIR}/test-network"
 # MSYS_NO_PATHCONV=1 only around network.sh: it shells out to
@@ -82,6 +86,11 @@ cd "${SAMPLES_DIR}/test-network"
 # and Fabric binary invocations above/below to understand POSIX-style
 # paths at all.
 MSYS_NO_PATHCONV=1 ./network.sh up createChannel -c "${CHANNEL_NAME}" -ca
+
+# The repo root has a go.work; `go mod vendor` (run by deployCC/packageCC.sh) refuses
+# to run in workspace mode, which left the chaincode package without a vendor/
+# directory and made the peer download modules inside the build container.
+export GOWORK=off
 
 echo "== 4/5: deploying transaction chaincode =="
 MSYS_NO_PATHCONV=1 ./network.sh deployCC \
