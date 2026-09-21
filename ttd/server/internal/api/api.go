@@ -61,6 +61,10 @@ type Config struct {
 	// enrollment, so the /admin console is one click. NEVER set this in
 	// production — real issuance is air-gapped (docs/pki-ceremony.md).
 	LabIssuer *LabIssuer
+
+	// WebDir, when non-empty, serves the browser client (/app/) from this
+	// directory instead of the copy embedded at build time. Read at startup.
+	WebDir string
 }
 
 // RateLimits — per-minute request caps (Rencana V1 §24). A zero value
@@ -297,6 +301,9 @@ func (s *Server) Routes() http.Handler {
 	// Static admin console (Rencana V1 §14 operator workflow, in a browser).
 	mux.HandleFunc("GET /admin", s.hAdminUI)
 	mux.HandleFunc("GET /admin/", s.hAdminUI)
+
+	// Browser client: static files only, same-origin (ttd/web).
+	s.mountWebApp(mux, s.cfg.WebDir)
 
 	// Shared Liquid Glass stylesheet + runtime (also mounted on VerifyRoutes).
 	s.mountUIKit(mux)
