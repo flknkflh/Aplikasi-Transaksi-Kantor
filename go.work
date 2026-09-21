@@ -1,0 +1,10 @@
+go 1.27
+
+use (
+	./crypto
+	./chaincode/transaction
+	./chaincode/asset
+	./api
+	./indexer
+	./audit-service
+)

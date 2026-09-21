@@ -1,0 +1,6 @@
+# Force LF for shell scripts regardless of the checking-out machine's
+# core.autocrlf setting. On Windows, a CRLF checkout breaks native execution
+# under WSL/Linux (shebang lines like "#!/usr/bin/env bash\r" fail to
+# resolve) — this bit us during development of network/bootstrap.sh. See
+# docs/adr/0001-fase1-spike-scope.md and the README's Troubleshooting section.
+*.sh text eol=lf

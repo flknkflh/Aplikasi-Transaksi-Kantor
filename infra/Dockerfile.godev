@@ -1,0 +1,46 @@
+# Shared build/runtime base for every Go service that touches ML-DSA-65
+# (crypto/, api/, audit-service/; indexer/ doesn't need liboqs but reuses this
+# image for consistency). chaincode/ deliberately does NOT depend on this —
+# see docs/adr/0001-fase1-spike-scope.md decision #1.
+#
+# Versions pinned against the actual upstream repos (checked via GitHub API,
+# not guessed) as of 2026-09-17:
+#   - liboqs        0.16.0  (git tag, no "v" prefix)
+#   - liboqs-go      v0.16.0 (Go module, pulled normally via go.mod)
+FROM golang:1.27-bookworm AS godev
+
+ARG LIBOQS_VERSION=0.16.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build libssl-dev git pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build liboqs as a shared library and install it under /usr/local (the
+# defaults liboqs-go's pkg-config file expects).
+RUN git clone --branch "${LIBOQS_VERSION}" --depth=1 https://github.com/open-quantum-safe/liboqs /tmp/liboqs \
+    && cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build /tmp/liboqs/build --parallel \
+    && cmake --build /tmp/liboqs/build --target install \
+    && rm -rf /tmp/liboqs \
+    && ldconfig
+
+# liboqs-go's cgo directive is `#cgo pkg-config: liboqs-go`, a bespoke
+# pkg-config file (distinct from liboqs's own generated liboqs.pc) that just
+# points at the include/lib dirs above — see the liboqs-go README's
+# "Configure and install the wrapper" section.
+RUN printf '%s\n' \
+        'LIBOQS_INCLUDE_DIR=/usr/local/include' \
+        'LIBOQS_LIB_DIR=/usr/local/lib' \
+        '' \
+        'Name: liboqs-go' \
+        'Description: Go bindings for liboqs' \
+        "Version: ${LIBOQS_VERSION}" \
+        'Cflags: -I${LIBOQS_INCLUDE_DIR}' \
+        'Libs: -L${LIBOQS_LIB_DIR} -loqs' \
+        > /usr/local/lib/pkgconfig/liboqs-go.pc
+
+ENV LD_LIBRARY_PATH=/usr/local/lib
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+ENV CGO_ENABLED=1
+
+WORKDIR /workspace

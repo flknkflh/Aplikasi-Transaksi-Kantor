@@ -1,0 +1,146 @@
+name: pqc-ledger
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ledger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ledger_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-ledger}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ledger}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../migrations:/migrations
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER:-ledger}:${POSTGRES_PASSWORD:-ledger_dev_only}@postgres:5432/${POSTGRES_DB:-ledger}?sslmode=disable"
+      - "up"
+    restart: "no"
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ledger_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ledger_dev_only}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+      # See the top-level `networks.buildnet` comment: without this, `go
+      # mod download` inside the build can hang indefinitely on hosts where
+      # a VPN's MTU is below Docker's default.
+      network: buildnet
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ledger}:${POSTGRES_PASSWORD:-ledger_dev_only}@postgres:5432/${POSTGRES_DB:-ledger}?sslmode=disable
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-ledger_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-ledger_dev_only}
+      KEYSTORE_PATH: /keystore/dev-keystore.json
+      FABRIC_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts
+      FABRIC_KEY_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore
+      FABRIC_TLS_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+      # Fabric's own docker-compose project runs alongside this one, not on
+      # the same Docker network — host.docker.internal (Docker Desktop) is
+      # how this container reaches the peer's port published to the host.
+      # On Linux hosts without Docker Desktop, add
+      # `extra_hosts: ["host.docker.internal:host-gateway"]` or attach both
+      # compose projects to a shared network instead.
+      FABRIC_PEER_ENDPOINT: dns:///host.docker.internal:7051
+      FABRIC_GATEWAY_PEER: peer0.org1.example.com
+      FABRIC_CHANNEL_NAME: ledgerchannel
+    volumes:
+      - ../network/vendor/fabric-samples/test-network/organizations:/fabric/organizations:ro
+      - api_keystore:/keystore
+    ports:
+      - "8080:8080"
+
+  indexer:
+    build:
+      context: ..
+      dockerfile: indexer/Dockerfile
+      network: buildnet
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ledger}:${POSTGRES_PASSWORD:-ledger_dev_only}@postgres:5432/${POSTGRES_DB:-ledger}?sslmode=disable
+      FABRIC_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts
+      FABRIC_KEY_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore
+      FABRIC_TLS_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+      FABRIC_PEER_ENDPOINT: dns:///host.docker.internal:7051
+      FABRIC_GATEWAY_PEER: peer0.org1.example.com
+      FABRIC_CHANNEL_NAME: ledgerchannel
+    volumes:
+      - ../network/vendor/fabric-samples/test-network/organizations:/fabric/organizations:ro
+
+  audit-service:
+    build:
+      context: ..
+      dockerfile: audit-service/Dockerfile
+      network: buildnet
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ledger}:${POSTGRES_PASSWORD:-ledger_dev_only}@postgres:5432/${POSTGRES_DB:-ledger}?sslmode=disable
+      FABRIC_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts
+      FABRIC_KEY_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore
+      FABRIC_TLS_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+      FABRIC_PEER_ENDPOINT: dns:///host.docker.internal:7051
+      FABRIC_GATEWAY_PEER: peer0.org1.example.com
+      FABRIC_CHANNEL_NAME: ledgerchannel
+    volumes:
+      - ../network/vendor/fabric-samples/test-network/organizations:/fabric/organizations:ro
+    ports:
+      - "8081:8081"
+
+volumes:
+  pg_data:
+  minio_data:
+  api_keystore:
+
+networks:
+  # Docker's default build/bridge network MTU (1500) can be higher than a
+  # VPN's real path MTU, silently stalling large HTTPS transfers (e.g. `go
+  # mod download`) inside build containers while small requests keep
+  # working — this bit us during development. 1420 matches a typical
+  # corporate VPN; lower it further (e.g. 1400) if builds still hang.
+  buildnet:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1420

@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS audit_checkpoint;
+DROP TABLE IF EXISTS outbox_event;
+DROP TABLE IF EXISTS document_reference;
+DROP TABLE IF EXISTS custody_event;
+DROP TABLE IF EXISTS asset;
+DROP TABLE IF EXISTS approval;
+DROP TABLE IF EXISTS transaction_event;
+DROP TABLE IF EXISTS transaction;
+DROP TABLE IF EXISTS revocation_record;
+DROP TABLE IF EXISTS key_reference;
+DROP TABLE IF EXISTS user_identity;
+DROP TABLE IF EXISTS organization;
