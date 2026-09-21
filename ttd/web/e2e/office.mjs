@@ -4,6 +4,8 @@
 // result is checked from every angle (status, timeline, signed PDF, public
 // verifier, ledger outbox state) plus the negative cases.
 //
+//   NOTE: this tests the EARLIER approval app; build its client first: WEB_APP=ttd bash ttd/web/build.sh
+//   (the Docker image builds the archive client by default) and use the seed of that era.
 //   cd deploy/office && docker compose up -d --build && bash seed.sh
 //   cd ttd/web/e2e && npm ci && node office.mjs
 import { chromium } from 'playwright-core';

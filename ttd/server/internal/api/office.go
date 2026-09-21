@@ -84,23 +84,27 @@ func (s *Server) mountOffice(mux *http.ServeMux) {
 		proxy.ServeHTTP(w, r)
 	}))
 
-	// Public receipt check: anyone holding a receipt id can see it is genuine. The
-	// receipt id is an unguessable capability; the request is rate-limited by IP and
-	// only ever forwarded to the one read-only upstream route.
-	mux.HandleFunc("GET /api/v1/public/receipts/{receipt_id}", s.limit(s.rlVerify, byIP, func(w http.ResponseWriter, r *http.Request) {
-		r = r.Clone(r.Context())
-		for k := range r.Header {
-			if strings.HasPrefix(strings.ToLower(k), "x-office-") {
-				r.Header.Del(k)
+	// Anonymous, read-only routes into the ledger service: a receipt check (the receipt
+	// id is an unguessable capability) and one-time download tickets minted for an
+	// admin. Both are rate-limited by IP and forwarded only to their one upstream route.
+	publicForward := func(pattern, upstreamPrefix, param string) {
+		mux.HandleFunc("GET "+pattern, s.limit(s.rlVerify, byIP, func(w http.ResponseWriter, r *http.Request) {
+			r = r.Clone(r.Context())
+			for k := range r.Header {
+				if strings.HasPrefix(strings.ToLower(k), "x-office-") {
+					r.Header.Del(k)
+				}
 			}
-		}
-		r.Header.Del("Authorization")
-		r.Header.Del("X-Forwarded-For")
-		r.Header.Set("X-Office-Secret", s.cfg.OfficeSecret)
-		r.URL.Path = "/public/receipts/" + r.PathValue("receipt_id")
-		r.URL.RawPath = ""
-		proxy.ServeHTTP(w, r)
-	}))
+			r.Header.Del("Authorization")
+			r.Header.Del("X-Forwarded-For")
+			r.Header.Set("X-Office-Secret", s.cfg.OfficeSecret)
+			r.URL.Path = upstreamPrefix + r.PathValue(param)
+			r.URL.RawPath = ""
+			proxy.ServeHTTP(w, r)
+		}))
+	}
+	publicForward("/api/v1/public/receipts/{receipt_id}", "/public/receipts/", "receipt_id")
+	publicForward("/api/v1/public/dl/{token}", "/public/dl/", "token")
 
 	mux.HandleFunc("GET /internal/office/signatures/{public_id}", s.officeSecret(s.hOfficeSignature))
 	mux.HandleFunc("GET /internal/office/signatures/{public_id}/document", s.officeSecret(s.hOfficeSignatureDocument))

@@ -502,3 +502,55 @@ func TestArchiveListFiltersAndSearch(t *testing.T) {
 		t.Errorf("stats: %v", st)
 	}
 }
+
+func TestArchiveDownloadTicketIsOneTimeShortLivedAndAdminOnly(t *testing.T) {
+	h := newHarness(t)
+	h.assign(dina, h.office("Kantor A"))
+	data := randomBytes(70000)
+	h.upload(&dina, "besar.bin", data, 30000)
+	var itemID string
+	_ = h.db.QueryRow(context.Background(), `SELECT id FROM archive_item`).Scan(&itemID)
+
+	if c, _ := h.json(&dina, "POST", "/archive/items/"+itemID+"/ticket", nil); c != 403 {
+		t.Fatalf("a sender must not mint download tickets: %d", c)
+	}
+	c, tk := h.json(&root, "POST", "/archive/items/"+itemID+"/ticket", nil)
+	if c != 200 {
+		t.Fatalf("ticket: %d %v", c, tk)
+	}
+	url := strings.TrimPrefix(tk["url"].(string), "/api/v1")
+	get := func(secret, path string) (int, []byte) {
+		req := httptest.NewRequest("GET", path, nil)
+		if secret != "" {
+			req.Header.Set("X-Office-Secret", secret)
+		}
+		w := httptest.NewRecorder()
+		h.h.ServeHTTP(w, req)
+		b, _ := io.ReadAll(w.Body)
+		return w.Code, b
+	}
+	if c, _ := get("", url); c != 401 {
+		t.Errorf("the download route is only reachable through the proxy: %d", c)
+	}
+	c, b := get(testSecret, url)
+	if c != 200 || !bytes.Equal(b, data) {
+		t.Fatalf("redeeming the ticket must stream the exact bytes: %d", c)
+	}
+	if c, _ := get(testSecret, url); c != 404 {
+		t.Errorf("a ticket works once: %d", c)
+	}
+	// expiry
+	_, tk2 := h.json(&root, "POST", "/archive/items/"+itemID+"/ticket", nil)
+	if _, err := h.db.Exec(context.Background(), `UPDATE archive_ticket SET expires_at = now() - interval '1 second' WHERE used_at IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := get(testSecret, strings.TrimPrefix(tk2["url"].(string), "/api/v1")); c != 404 {
+		t.Errorf("an expired ticket must not work: %d", c)
+	}
+	// the download is attributed to the admin who minted it
+	var who string
+	_ = h.db.QueryRow(context.Background(), `SELECT admin_id FROM archive_access WHERE action='download' ORDER BY id DESC LIMIT 1`).Scan(&who)
+	if who != root.id {
+		t.Errorf("the access log must name the admin: %q", who)
+	}
+}

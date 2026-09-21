@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Demo accounts for the integrated office app (idempotent):
-#   superadmin / superadmin12345      admin console (/admin) + office roles
-#   admin@local / admin12345          admin console
-#   pemohon@local / pemohon12345      requester   (Budi Santoso)
-#   penyetuju@local / penyetuju12345  approver    (Gita Aurora)
-#   penyetuju2@local / penyetuju12345 approver    (Sari Wulandari)
+# Demo data for the archive app (idempotent):
+#   superadmin / superadmin12345     central admin (archive console + /admin)
+#   admin@local / admin12345         central admin
+#   office "Kantor Cabang A":  pengirim.a@local / pengirim12345
+#   office "Kantor Cabang B":  pengirim.b@local / pengirim12345
+#   baru@local / pengirim12345       approved but NOT assigned to an office yet
 #
 #   deploy/office/seed.sh [base-url]
 set -euo pipefail
@@ -19,38 +19,47 @@ curl -fsS "$BASE/api/v1/public/ca/root.crt" >/dev/null || { echo "!! no server a
 login() { curl -fsS -X POST "$BASE/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" | jval access_token; }
 SU=$(login "$SU_USER" "$SU_PASS") || { echo "!! super-admin login failed"; exit 1; }
 echo ">> $SU_USER ready"
+AUTH=(-H "Authorization: Bearer $SU" -H 'Content-Type: application/json')
 
-curl -sS -X POST "$BASE/api/v1/admin/admins" -H "Authorization: Bearer $SU" -H 'Content-Type: application/json' \
-  -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
+curl -sS -X POST "$BASE/api/v1/admin/admins" "${AUTH[@]}" -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
 echo ">> admin@local ready"
 
-# email password full_name position nip -> account id (registers + approves; reuses an existing one)
+# offices (create returns the slug id; a duplicate answers 409, then the id is the slug of the name)
+office() { # name -> id
+  local out; out=$(curl -sS -X POST "$BASE/office/archive/offices" "${AUTH[@]}" -d "{\"name\":\"$1\"}")
+  local id; id=$(echo "$out" | jval id)
+  [ -n "$id" ] || id=$(echo "$1" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//')
+  echo "$id"
+}
+OA=$(office "Kantor Cabang A"); OB=$(office "Kantor Cabang B")
+echo ">> offices: $OA, $OB"
+
+# email name -> account id (registers + approves; reuses an existing account)
 person() {
-  local email=$1 pass=$2 name=$3 pos=$4 nip=$5 id
+  local email=$1 name=$2 id
   id=$(curl -sS -X POST "$BASE/api/v1/auth/register" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$email\",\"password\":\"$pass\",\"full_name\":\"$name\",\"display_name\":\"$name\",\"organization\":\"Dinas Contoh\",\"position\":\"$pos\",\"nip\":\"$nip\"}" | jval account_id || true)
+    -d "{\"email\":\"$email\",\"password\":\"pengirim12345\",\"full_name\":\"$name\",\"display_name\":\"$name\",\"organization\":\"Demo\"}" | jval account_id || true)
   [ -n "$id" ] || id=$(curl -fsS "$BASE/api/v1/admin/accounts" -H "Authorization: Bearer $SU" | tr '}' '\n' | grep "\"$email\"" | jval account_id || true)
   [ -n "$id" ] && curl -fsS -X POST "$BASE/api/v1/admin/accounts/$id/approve" -H "Authorization: Bearer $SU" >/dev/null || true
   echo "$id"
 }
-P1=$(person pemohon@local pemohon12345 "Budi Santoso, S.Kom." "Staf Pengadaan" "198501012010011001")
-P2=$(person penyetuju@local penyetuju12345 "Gita Aurora, S.Ap., M.P.A." "Kepala Bagian Umum" "198704012011012005")
-P3=$(person penyetuju2@local penyetuju12345 "Sari Wulandari, S.E." "Kepala Bagian Keuangan" "198203152009012003")
-echo ">> pemohon@local, penyetuju@local, penyetuju2@local ready"
+assign() { curl -fsS -X PUT "$BASE/office/archive/members/$1" "${AUTH[@]}" -d "{\"organization_id\":\"$2\",\"email\":\"$3\",\"name\":\"$4\"}" >/dev/null; }
 
-role() { curl -fsS -X PUT "$BASE/office/roles/$1" -H "Authorization: Bearer $SU" -H 'Content-Type: application/json' \
-  -d "{\"role\":\"$2\",\"email\":\"$3\",\"name\":\"$4\"}" >/dev/null; }
-role "$P1" requester pemohon@local "Budi Santoso, S.Kom."
-role "$P2" approver penyetuju@local "Gita Aurora, S.Ap., M.P.A."
-role "$P3" approver penyetuju2@local "Sari Wulandari, S.E."
-echo ">> office roles set"
+PA=$(person pengirim.a@local "Dina Pratiwi")
+PB=$(person pengirim.b@local "Eko Wijaya")
+person baru@local "Fajar Baru" >/dev/null
+assign "$PA" "$OA" pengirim.a@local "Dina Pratiwi"
+assign "$PB" "$OB" pengirim.b@local "Eko Wijaya"
+echo ">> senders ready and assigned"
 
 cat <<EOT
 
-  Aplikasi       : $BASE/app/
-     pemohon@local    / pemohon12345     (pemohon — membuat pengajuan)
-     penyetuju@local  / penyetuju12345   (penyetuju — menyetujui dengan TTD)
-     penyetuju2@local / penyetuju12345   (penyetuju kedua)
-  Konsol admin   : $BASE/admin   (admin@local / admin12345  atau  $SU_USER / $SU_PASS)
-  Verifikasi     : ${PQC_VERIFY_URL:-http://localhost:18098}
+  Aplikasi web   : $BASE/app/
+     pengirim.a@local / pengirim12345   (Kantor Cabang A — hanya bisa mengirim)
+     pengirim.b@local / pengirim12345   (Kantor Cabang B)
+     baru@local       / pengirim12345   (disetujui, BELUM ditetapkan ke kantor)
+  Admin pusat    : login di $BASE/app/ dengan  admin@local / admin12345  atau  $SU_USER / $SU_PASS
+                   (lihat semua kiriman, verifikasi, unduh, atur kantor & pengguna)
+  Konsol akun    : $BASE/admin   (setujui akun baru)
+  Cek bukti      : ${PQC_VERIFY_URL:-http://localhost:18098}   atau tab "Cek bukti" di aplikasi
 EOT

@@ -1,7 +1,8 @@
-# Office app stack (Docker)
+# Archive app stack (Docker)
 
-TTD (login, signing, verification, browser client) + the transaction ledger service behind one origin.
-See [ADR-0003](../../docs/adr/0003-office-app.md).
+Several offices send files to one server; the server signs every upload, records it on the ledger and issues a
+receipt. TTD (login, /admin, web client) + the ledger service, behind one origin. See
+[ADR-0004](../../docs/adr/0004-archive-server-side-signing.md).
 
 ```sh
 cd deploy/office
@@ -11,11 +12,15 @@ bash seed.sh
 
 | What | URL | Login |
 |---|---|---|
-| App | http://localhost:18099/app/ | `pemohon@local` / `pemohon12345` (requester), `penyetuju@local` / `penyetuju12345` (approver), `penyetuju2@local` (approver) |
-| Admin console (approve accounts) | http://localhost:18099/admin | `admin@local` / `admin12345`, `superadmin` / `superadmin12345` |
-| Public verification site | http://localhost:18098 | none |
+| Web app (send / archive) | http://localhost:18099/app/ | sender: `pengirim.a@local` / `pengirim12345` (Kantor Cabang A), `pengirim.b@local` (B); `baru@local` = approved but no office yet |
+| Central admin (archive console) | same page | `admin@local` / `admin12345` or `superadmin` / `superadmin12345` |
+| Account approval | http://localhost:18099/admin | same admin logins |
+| Public receipt check | http://localhost:18099/app/#r=<receipt number> or http://localhost:18098 | none |
 
-Roles are assigned by an admin in the app (menu **Peran**, visible to admin accounts).
+A sender only sees the upload screen and their own receipt. The admin sees every office's uploads, can verify
+signatures / chain / stored file, download files (one-time links) and manage offices and users.
+Config: `SERVER_NAME` (shown as "Server tujuan"), `ARCHIVE_MAX_BYTES` (default 20 GiB per file), `KEYSTORE_KEK` (encrypts all
+signing keys at rest — change it and keep it safe; losing it loses the keys).
 
 - `ledger-api` is **not** published to the host: only the TTD server (which authenticates users) can reach it.
 - Default: Fabric off (`FABRIC_ENABLED=false`): business events are signed and queued in `outbox_event`.

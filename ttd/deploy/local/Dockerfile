@@ -9,9 +9,9 @@ COPY core/ ./core/
 COPY server/ ./server/
 COPY tools/ ./tools/
 COPY web/build.sh ./web/build.sh
-COPY web/src/ ./web/src/
-# 1) browser client: Go core -> pqcsign.wasm + static files, into the dir the
-#    server embeds; 2) the server (embeds it) and ca-admin — pure Go, no cgo.
+COPY web/arsip/ ./web/arsip/
+# 1) browser client (the archive app: plain JS) into the dir the server embeds;
+#    2) the server (embeds it) and ca-admin — pure Go, no cgo.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     bash web/build.sh && \

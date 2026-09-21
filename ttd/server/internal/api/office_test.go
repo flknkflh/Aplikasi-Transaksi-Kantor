@@ -221,7 +221,11 @@ func TestPublicReceiptRouteIsAnonymousReadOnlyAndSecretBacked(t *testing.T) {
 }
 
 func TestPublicServerInfoNamesTheServer(t *testing.T) {
-	e := newEnvWith(t, func(c *api.Config) { c.ServerName = "Arsip Pusat"; c.OfficeUpstream = "http://127.0.0.1:1"; c.OfficeSecret = officeSecret })
+	e := newEnvWith(t, func(c *api.Config) {
+		c.ServerName = "Arsip Pusat"
+		c.OfficeUpstream = "http://127.0.0.1:1"
+		c.OfficeSecret = officeSecret
+	})
 	w := e.doHdr("GET", "/api/v1/public/server", "", nil, nil)
 	mustCode(t, w, http.StatusOK)
 	b := jbody(t, w)

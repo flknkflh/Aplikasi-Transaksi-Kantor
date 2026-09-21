@@ -125,7 +125,13 @@ func TestServerStillHasNoSigningEndpoint(t *testing.T) {
 // an inline script, inline style attribute or inline event handler, or the
 // strict CSP would silently break it (or, worse, get loosened to make it work).
 func TestBrowserClientSourceIsCSPClean(t *testing.T) {
-	src := filepath.Join("..", "..", "..", "web", "src")
+	for _, app := range []string{"arsip", "src"} { // the archive client and the earlier PDF-signing client
+		checkClientCSP(t, filepath.Join("..", "..", "..", "web", app))
+	}
+}
+
+func checkClientCSP(t *testing.T, src string) {
+	t.Helper()
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		t.Skipf("client sources not present: %v", err)
@@ -141,17 +147,18 @@ func TestBrowserClientSourceIsCSPClean(t *testing.T) {
 		}
 		b, _ := os.ReadFile(filepath.Join(src, e.Name()))
 		s := string(b)
+		name := filepath.Base(src) + "/" + e.Name()
 		if strings.HasSuffix(e.Name(), ".html") && inlineScript.MatchString(s) {
-			t.Errorf("%s: inline <script> body", e.Name())
+			t.Errorf("%s: inline <script> body", name)
 		}
 		if styleAttr.MatchString(s) || styleTag.MatchString(s) {
-			t.Errorf("%s: inline style", e.Name())
+			t.Errorf("%s: inline style", name)
 		}
 		if handler.MatchString(s) {
-			t.Errorf("%s: inline event handler", e.Name())
+			t.Errorf("%s: inline event handler", name)
 		}
 		if evalUse.MatchString(s) {
-			t.Errorf("%s: eval-like construct", e.Name())
+			t.Errorf("%s: eval-like construct", name)
 		}
 	}
 }

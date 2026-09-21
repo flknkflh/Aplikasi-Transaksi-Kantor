@@ -60,6 +60,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/office", s.officeRoutes)
 		if s.Archive != nil {
 			r.Get("/public/receipts/{receipt_id}", s.proxyOnly(s.publicReceipt))
+			r.Get("/public/dl/{token}", s.proxyOnly(s.publicDownload))
 		}
 	}
 

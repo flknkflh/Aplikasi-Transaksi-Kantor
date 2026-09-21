@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arsip Transaksi</title>
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span> Arsip Transaksi <span class="ver" id="verTag"></span></div>
+  <div class="acct" id="acct" hidden>
+    <button class="acct-btn" id="acctBtn" type="button"><span id="acctEmail"></span> ▾</button>
+    <div class="acct-menu" id="acctMenu" hidden>
+      <button type="button" data-act="logout">Keluar</button>
+    </div>
+  </div>
+</header>
+
+<!-- Which server is this? Always visible, before and after login. -->
+<div class="server-bar" id="serverBar">
+  <span class="sb-label">Server tujuan</span>
+  <b id="sbName">…</b>
+  <span class="mono" id="sbHost"></span>
+  <span class="pill ok" id="sbSecure" hidden>HTTPS</span>
+  <span class="pill warn" id="sbInsecure" hidden>HTTP tanpa enkripsi</span>
+</div>
+
+<nav class="nav" id="nav" hidden>
+  <button type="button" data-nav="upload" id="navUpload">Kirim berkas</button>
+  <button type="button" data-nav="archive" id="navArchive" hidden>Arsip</button>
+  <button type="button" data-nav="offices" id="navOffices" hidden>Kantor &amp; pengguna</button>
+  <button type="button" data-nav="verify">Cek bukti</button>
+</nav>
+
+<main>
+  <div class="banner bad" id="fatal" hidden></div>
+
+  <!-- AUTH -->
+  <section class="screen active" id="scAuth">
+    <h1>Masuk</h1>
+    <p class="sub">Kirim berkas ke arsip pusat. Setiap kiriman ditandatangani digital dan dicatat ke blockchain secara otomatis oleh server.</p>
+    <div class="tabs">
+      <button type="button" id="tabLogin" class="on">Masuk</button>
+      <button type="button" id="tabReg">Daftar akun</button>
+      <button type="button" id="tabCheck">Cek bukti</button>
+    </div>
+
+    <form class="card" id="paneLogin" autocomplete="on">
+      <label for="lemail">Email</label>
+      <input type="text" id="lemail" autocomplete="username" placeholder="nama@kantor.go.id" />
+      <label for="lpw">Kata sandi</label>
+      <input type="password" id="lpw" autocomplete="current-password" />
+      <div class="mt18"><button class="btn block" id="btnLogin" type="submit"><span class="spin"></span><span class="txt">Masuk</span></button></div>
+      <div class="msg" id="loginMsg"></div>
+    </form>
+
+    <form class="card" id="paneReg" autocomplete="on" hidden>
+      <label for="rname">Nama lengkap</label>
+      <input type="text" id="rname" />
+      <label for="rorg">Kantor / unit</label>
+      <input type="text" id="rorg" placeholder="Nama kantor Anda" />
+      <label for="remail">Email</label>
+      <input type="text" id="remail" autocomplete="username" />
+      <label for="rpw">Kata sandi <span class="faint">(min. 8 karakter)</span></label>
+      <input type="password" id="rpw" autocomplete="new-password" />
+      <div class="mt18"><button class="btn block" id="btnReg" type="submit"><span class="spin"></span><span class="txt">Daftar</span></button></div>
+      <div class="msg" id="regMsg"></div>
+      <p class="hint">Akun perlu disetujui dan ditetapkan ke kantor oleh admin pusat sebelum bisa mengirim.</p>
+    </form>
+
+    <div class="card" id="paneCheck" hidden>
+      <p class="hint mt0">Punya nomor bukti kirim? Periksa keasliannya tanpa login.</p>
+      <label for="cid">Nomor bukti</label>
+      <input type="text" id="cid" placeholder="rcp_…" />
+      <div class="mt14"><button type="button" class="btn" id="btnCheck">Periksa</button></div>
+    </div>
+  </section>
+
+  <!-- UPLOAD (sender) -->
+  <section class="screen" id="scUpload">
+    <h1>Kirim berkas</h1>
+    <p class="sub" id="upWho"></p>
+    <div class="card">
+      <div class="banner warn" id="upNoOffice" hidden>Akun Anda belum ditetapkan ke sebuah kantor. Hubungi admin pusat untuk dapat mengirim.</div>
+      <div class="banner warn" id="upPending" hidden></div>
+      <div id="upForm">
+        <div class="filepick" id="upPick" role="button" tabindex="0" aria-label="Pilih berkas">
+          <span>📎</span><span id="upName">Pilih atau seret berkas apa saja…</span>
+        </div>
+        <div class="hint" id="upMeta"></div>
+        <label for="upDesc">Keterangan <span class="faint">(opsional)</span></label>
+        <textarea id="upDesc" rows="2" maxlength="2000" placeholder="mis. Laporan keuangan triwulan III"></textarea>
+        <div class="row mt18">
+          <button type="button" class="btn" id="upGo" disabled><span class="spin"></span><span class="txt">Unggah &amp; tanda tangani</span></button>
+        </div>
+        <p class="note">Server akan memeriksa keutuhan berkas, menandatanganinya secara digital atas nama Anda, dan mencatatnya ke blockchain. Anda menerima bukti kirim.</p>
+      </div>
+      <div id="upBusy" hidden>
+        <div class="verdict"><span id="upBusyName"></span></div>
+        <div class="bar"><div class="bar-fill" id="upBar"></div></div>
+        <div class="hint" id="upStat"></div>
+        <div class="row mt14">
+          <button type="button" class="btn secondary" id="upPause">Jeda</button>
+          <button type="button" class="btn ghost" id="upCancel">Batalkan</button>
+        </div>
+      </div>
+      <div class="msg" id="upMsg"></div>
+    </div>
+  </section>
+
+  <!-- RECEIPT -->
+  <section class="screen" id="scReceipt">
+    <h1>Bukti kirim</h1>
+    <p class="sub">Simpan bukti ini. Siapa pun yang memegang nomor buktinya dapat memeriksa keasliannya.</p>
+    <div class="card" id="rcBody"></div>
+    <div class="row mt14 no-print">
+      <button type="button" class="btn" id="rcJson">Unduh bukti (.json bertanda tangan)</button>
+      <button type="button" class="btn secondary" id="rcPrint">Cetak</button>
+      <button type="button" class="btn secondary" id="rcCopy">Salin tautan verifikasi</button>
+      <button type="button" class="btn ghost" id="rcAgain">Kirim berkas lain</button>
+    </div>
+  </section>
+
+  <!-- VERIFY RECEIPT (public) -->
+  <section class="screen" id="scVerify">
+    <h1>Cek bukti kirim</h1>
+    <p class="sub">Periksa apakah bukti asli dan berkas yang Anda pegang sama dengan yang diarsipkan.</p>
+    <div class="card">
+      <label for="vid">Nomor bukti</label>
+      <input type="text" id="vid" placeholder="rcp_…" />
+      <div class="mt14"><button type="button" class="btn" id="vGo">Periksa</button></div>
+      <div class="result" id="vResult" hidden></div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE (central admin) -->
+  <section class="screen" id="scArchive">
+    <h1>Arsip kiriman</h1>
+    <p class="sub" id="arStats"></p>
+    <div class="card">
+      <div class="toolbar">
+        <select id="arOrg" aria-label="Kantor"><option value="">Semua kantor</option></select>
+        <input type="text" id="arQ" class="grow" placeholder="Cari nama berkas, pengirim, hash, nomor bukti…" />
+        <input type="date" id="arFrom" aria-label="Dari tanggal" />
+        <input type="date" id="arTo" aria-label="Sampai tanggal" />
+        <button type="button" class="btn" id="arGo">Cari</button>
+      </div>
+      <div id="arList"></div>
+      <div class="row mt14" id="arPager" hidden>
+        <button type="button" class="btn secondary sm" id="arPrev">‹ Sebelumnya</button>
+        <span class="hint" id="arPage"></span>
+        <button type="button" class="btn secondary sm" id="arNext">Berikutnya ›</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="scItem">
+    <div class="card">
+      <div id="itBody"></div>
+      <div class="row mt18" id="itActions"></div>
+      <div id="itVerify"></div>
+      <div class="msg" id="itMsg"></div>
+      <div class="mt14"><button type="button" class="btn ghost" id="itBack">← Kembali ke arsip</button></div>
+    </div>
+  </section>
+
+  <!-- OFFICES (central admin) -->
+  <section class="screen" id="scOffices">
+    <h1>Kantor &amp; pengguna</h1>
+    <p class="sub">Akun baru disetujui di <a href="/admin" target="_blank" rel="noopener">konsol admin</a>, lalu ditetapkan ke kantor di sini.</p>
+    <div class="card">
+      <h3 class="h3 mt0">Kantor</h3>
+      <div id="ofList"></div>
+      <div class="toolbar mt14">
+        <input type="text" id="ofName" class="grow" placeholder="Nama kantor baru" maxlength="120" />
+        <button type="button" class="btn" id="ofAdd">Tambah kantor</button>
+      </div>
+      <div class="msg" id="ofMsg"></div>
+    </div>
+    <div class="card">
+      <h3 class="h3 mt0">Pengguna</h3>
+      <div id="mbList"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

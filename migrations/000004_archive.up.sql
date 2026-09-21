@@ -66,3 +66,13 @@ CREATE TABLE archive_access (
     at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_archive_access_item ON archive_access (item_id, at DESC);
+
+-- One-time, short-lived download links so an admin's browser can stream a
+-- multi-gigabyte file natively (no token in the URL that outlives two minutes).
+CREATE TABLE archive_ticket (
+    token_hash TEXT PRIMARY KEY,
+    item_id    TEXT NOT NULL REFERENCES archive_item(id),
+    admin_id   TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ
+);

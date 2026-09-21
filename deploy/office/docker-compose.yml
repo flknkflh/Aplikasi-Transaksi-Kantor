@@ -1,5 +1,6 @@
-# The integrated office app: TTD (login, signing, verification, browser client)
-# + the transaction ledger service, behind ONE origin.
+# The archive app: several offices send files to one server; every upload is signed
+# server-side and recorded to the ledger. TTD (login, admin console, web client) +
+# the ledger service, behind ONE origin.
 #
 #   docker compose up -d --build     # from this directory
 #   bash seed.sh                     # demo accounts (once per fresh volume)
@@ -73,7 +74,12 @@ services:
       FABRIC_ENABLED: "${FABRIC_ENABLED:-false}"
       OFFICE_PROXY_SECRET: "${OFFICE_SECRET:-dev-office-secret-change-me-0123456789}"
       TTD_INTERNAL_URL: "http://ttd:8099"
-    volumes: [ledger_keystore:/keystore]
+      # Keys of every sender/office identity live server-side; encrypt them at rest.
+      KEYSTORE_KEK: "${KEYSTORE_KEK:-dev-keystore-kek-change-me-0123456789}"
+      SERVER_NAME: "${SERVER_NAME:-Arsip Pusat}"
+      ARCHIVE_TEMP_DIR: /data/uploads
+      ARCHIVE_MAX_BYTES: "${ARCHIVE_MAX_BYTES:-21474836480}"   # 20 GiB per file
+    volumes: [ledger_keystore:/keystore, ledger_uploads:/data/uploads]
 
   ttd:
     build: { context: ../../ttd, dockerfile: deploy/local/Dockerfile }
@@ -92,9 +98,10 @@ services:
       PQC_MAX_UPLOAD_MB: "1024"
       PQC_OFFICE_UPSTREAM: "http://ledger-api:8080"
       PQC_OFFICE_SECRET: "${OFFICE_SECRET:-dev-office-secret-change-me-0123456789}"
+      PQC_SERVER_NAME: "${SERVER_NAME:-Arsip Pusat}"
     volumes: [ttd_ca:/ca, ttd_objects:/objects]
     ports:
       - "${PQC_APP_PORT:-18099}:8099"    # the app: /app/ + /admin + /api/v1 + /office
       - "${PQC_VERIFY_PORT:-18098}:8098" # verification-only site (public)
 
-volumes: { ttd_pgdata: {}, ledger_pgdata: {}, minio_data: {}, ledger_keystore: {}, ttd_ca: {}, ttd_objects: {} }
+volumes: { ttd_pgdata: {}, ledger_pgdata: {}, minio_data: {}, ledger_keystore: {}, ledger_uploads: {}, ttd_ca: {}, ttd_objects: {} }

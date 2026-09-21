@@ -1,7 +1,7 @@
 // End-to-end test of the browser client in a REAL Chrome against a REAL server
 // (in-memory store + the lab CA, exactly as tools/dev-up.sh runs it).
 //
-//   cd ttd/web && bash build.sh && cd e2e && npm ci && node run.mjs
+//   cd ttd/web && WEB_APP=ttd bash build.sh && cd e2e && npm ci && node run.mjs   (the earlier PDF-signing client)
 //
 // Drives the UI like a person would: register -> admin approves -> log in ->
 // create PIN (key generated in the browser) -> pick a PDF -> place QR -> sign ->

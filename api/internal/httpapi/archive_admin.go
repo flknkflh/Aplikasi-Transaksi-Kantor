@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +30,7 @@ func (s *Server) archiveAdminRoutes(r chi.Router) {
 	r.Get("/items/{id}", s.adminOnly(s.archiveDetail))
 	r.Post("/items/{id}/verify", s.adminOnly(s.archiveVerify))
 	r.Get("/items/{id}/download", s.adminOnly(s.archiveDownload))
+	r.Post("/items/{id}/ticket", s.adminOnly(s.archiveTicket))
 	r.Get("/offices", s.adminOnly(s.archiveOffices))
 	r.Post("/offices", s.adminOnly(s.archiveCreateOffice))
 	r.Get("/members", s.adminOnly(s.archiveMembers))
@@ -221,7 +225,10 @@ func (s *Server) archiveVerify(w http.ResponseWriter, r *http.Request) {
 // archiveDownload streams the stored bytes exactly as received. The file is
 // untrusted content: it is always an attachment, never sniffed or rendered.
 func (s *Server) archiveDownload(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	s.streamItem(w, r, chi.URLParam(r, "id"), identityFrom(r).ID)
+}
+
+func (s *Server) streamItem(w http.ResponseWriter, r *http.Request, id, adminID string) {
 	var key, name string
 	var size int64
 	err := s.DB.QueryRow(r.Context(), `SELECT storage_key, file_name, size_bytes FROM archive_item WHERE id = $1`, id).Scan(&key, &name, &size)
@@ -240,7 +247,7 @@ func (s *Server) archiveDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	s.logAccess(r.Context(), r, id, "download")
+	_, _ = s.DB.Exec(r.Context(), `INSERT INTO archive_access (item_id, admin_id, action, client_ip) VALUES ($1,$2,'download',$3)`, id, adminID, clientIP(r))
 	h := w.Header()
 	h.Set("Content-Type", "application/octet-stream")
 	h.Set("Content-Disposition", `attachment; filename="`+asciiName(name)+`"; filename*=UTF-8''`+percentEncode(name))
@@ -249,6 +256,41 @@ func (s *Server) archiveDownload(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	h.Set("Cache-Control", "private, no-store")
 	_, _ = io.Copy(w, rc)
+}
+
+// archiveTicket issues a one-time link (valid two minutes) for a native browser
+// download of one item.
+func (s *Server) archiveTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var one bool
+	if err := s.DB.QueryRow(r.Context(), `SELECT true FROM archive_item WHERE id = $1`, id).Scan(&one); err != nil {
+		writeError(w, http.StatusNotFound, "kiriman tidak ditemukan")
+		return
+	}
+	raw := make([]byte, 32)
+	_, _ = rand.Read(raw)
+	token := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(token))
+	if _, err := s.DB.Exec(r.Context(), `INSERT INTO archive_ticket (token_hash, item_id, admin_id, expires_at) VALUES ($1,$2,$3, now() + interval '2 minutes')`,
+		hex.EncodeToString(sum[:]), id, identityFrom(r).ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"url": "/api/v1/public/dl/" + token, "expires_in": 120})
+}
+
+// publicDownload redeems a ticket exactly once.
+func (s *Server) publicDownload(w http.ResponseWriter, r *http.Request) {
+	sum := sha256.Sum256([]byte(chi.URLParam(r, "token")))
+	var itemID, adminID string
+	err := s.DB.QueryRow(r.Context(), `
+		UPDATE archive_ticket SET used_at = now()
+		WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING item_id, admin_id`, hex.EncodeToString(sum[:])).Scan(&itemID, &adminID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "tautan unduhan tidak berlaku (kedaluwarsa atau sudah dipakai)")
+		return
+	}
+	s.streamItem(w, r, itemID, adminID)
 }
 
 func asciiName(n string) string {

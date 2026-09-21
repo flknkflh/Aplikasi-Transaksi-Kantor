@@ -26,27 +26,35 @@ liboqs. (An earlier revision used liboqs for ML-DSA on a mistaken reading of
 the Go release notes; corrected in
 [docs/adr/0001-fase1-spike-scope.md](docs/adr/0001-fase1-spike-scope.md), addendum.)
 
-## Aplikasi terpadu: transaksi kantor + TTD
+## Arsip transaksi multi-kantor (aplikasi utama saat ini)
 
-Satu aplikasi web (login tunggal) untuk transaksi kantor: **pemohon** mengajukan permintaan + PDF,
-**penyetuju** menyetujuinya dengan **tanda tangan digital di browser** pada PDF itu, dan setiap langkah
-dicatat sebagai peristiwa bertanda tangan hybrid dan berantai hash (antre ke ledger Fabric). Desain:
-[docs/adr/0003-office-app.md](docs/adr/0003-office-app.md).
+Beberapa kantor berbagi **satu server/database**. Pengirim login di web, **mengunggah berkas apa saja
+(ukuran bebas, bisa dilanjutkan)**, dan server **otomatis** memeriksa keutuhannya, **menandatangani
+transaksinya secara digital atas nama pengirim** (hybrid Ed25519 + ML-DSA-65, kunci di server), dan
+**mencatatnya ke blockchain Fabric**. Pengirim menerima **bukti kirim**; hanya **admin pusat** yang melihat
+isi/daftar kiriman semua kantor. Alamat server tujuan selalu tampil di layar. Desain dan keterbatasannya:
+[docs/adr/0004-archive-server-side-signing.md](docs/adr/0004-archive-server-side-signing.md).
 
 ```bash
+# 1) (opsional tapi disarankan) jaringan Fabric — Linux/WSL dengan Docker
+bash network/bootstrap.sh
+# 2) aplikasi
 cd deploy/office
-docker compose up -d --build     # ttd + ledger-api + 2x Postgres + MinIO
-bash seed.sh                     # akun demo (pemohon@local, penyetuju@local, ...)
-# buka http://localhost:18099/app/
+docker compose -f docker-compose.yml -f docker-compose.fabric.yml up -d --build   # tanpa Fabric: hanya docker-compose.yml
+bash seed.sh                                            # 2 kantor, 3 pengirim, admin
+# buka http://localhost:18099/app/   (pengirim.a@local / pengirim12345, admin: admin@local / admin12345)
 
-# tes end-to-end di Chrome asli (perlu stack di atas berjalan)
-(cd ../../ttd/web/e2e && npm ci && node office.mjs)
+# tes end-to-end di Chrome asli (perlu stack di atas; E2E_FABRIC=1 bila Fabric terhubung)
+(cd ../../ttd/web/e2e && npm ci && E2E_FABRIC=1 node arsip.mjs)
 ```
 
-Status jujur: alur pengajuan → persetujuan TTD → selesai/tolak berjalan penuh dan teruji, **termasuk pencatatan
-ke blockchain Fabric** (jaringan uji 2-org; `network/bootstrap.sh` lalu overlay `docker-compose.fabric.yml`,
-lihat `deploy/office/README.md`). Tanpa Fabric, peristiwa tetap tersimpan dan mengantre (UI menampilkan statusnya).
-Batasan di ADR-0003: jaringan Fabric adalah jaringan uji dev, bukan produksi.
+Kunci tanda tangan dipegang server (keystore terenkripsi `KEYSTORE_KEK`), jadi bukti "A yang mengirim" bersandar
+pada login + catatan server + rantai di blockchain, bukan kunci milik A saja (ADR-0004). Jaringan Fabric adalah
+jaringan uji dev, bukan produksi.
+
+### Aplikasi sebelumnya (masih ada di repo, tidak dipublikasikan)
+Alur persetujuan pengajuan dengan tanda tangan PDF di browser (ADR-0002, ADR-0003) beserta klien TTD-nya tetap ada;
+untuk menjalankan tes-nya: `WEB_APP=ttd bash ttd/web/build.sh` lalu `node ttd/web/e2e/run.mjs`.
 
 ## TTD Digital (browser)
 
@@ -90,7 +98,7 @@ Fabric ledger is not built yet (deferred by decision).
 
 ```
 docs/            PRD, ADRs
-ttd/             digital signature (TTD): imported PQC PDF Sign core/server/CA + browser client (web/)
+ttd/             login/admin console/web host (PQC PDF Sign server) + earlier PDF-signing client; web/arsip = the archive client
 crypto/          hybrid signing/KEM library (Ed25519+ML-DSA-65, X25519+ML-KEM-768)
 chaincode/       Fabric Go chaincode: transaction, asset
 network/         Fabric test-network bootstrap + config
