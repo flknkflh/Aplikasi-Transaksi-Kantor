@@ -38,6 +38,15 @@ type Config struct {
 	FabricGatewayPeer  string
 	FabricChannelName  string
 
+	// FabricEnabled=false runs without a Fabric connection: the outbox worker is
+	// not started and events stay queued (visible in the UI) until it is enabled.
+	FabricEnabled bool
+
+	// Office app: enabled when OfficeProxySecret is set. TTDInternalURL is how
+	// this service reaches the TTD server to verify approval signatures.
+	OfficeProxySecret string
+	TTDInternalURL    string
+
 	OutboxPollInterval string // parsed by main via time.ParseDuration
 	OutboxMaxAttempts  int
 }
@@ -65,6 +74,10 @@ func Load() Config {
 		FabricPeerEndpoint: getEnv("FABRIC_PEER_ENDPOINT", "dns:///localhost:7051"),
 		FabricGatewayPeer:  getEnv("FABRIC_GATEWAY_PEER", "peer0.org1.example.com"),
 		FabricChannelName:  getEnv("FABRIC_CHANNEL_NAME", "ledgerchannel"),
+
+		FabricEnabled:     getEnv("FABRIC_ENABLED", "true") != "false",
+		OfficeProxySecret: getEnv("OFFICE_PROXY_SECRET", ""),
+		TTDInternalURL:    getEnv("TTD_INTERNAL_URL", "http://localhost:8099"),
 
 		OutboxPollInterval: getEnv("OUTBOX_POLL_INTERVAL", "2s"),
 		OutboxMaxAttempts:  8,

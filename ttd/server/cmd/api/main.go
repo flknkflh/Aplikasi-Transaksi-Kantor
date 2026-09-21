@@ -50,7 +50,9 @@ func main() {
 	cfg.MaxStampBytes = mbEnv("PQC_MAX_STAMP_MB", 150)            // server QR stamp (pdfcpu) cap
 	cfg.MaxVerifyBytes = mbEnv("PQC_MAX_VERIFY_MB", 350)          // strict re-verify cap; larger = store-only
 	cfg.WebDir = os.Getenv("PQC_WEB_DIR")                         // "" -> embedded browser client
-	cfg.UploadDir = os.Getenv("PQC_UPLOAD_DIR")                   // "" -> os.TempDir()
+	cfg.OfficeUpstream = os.Getenv("PQC_OFFICE_UPSTREAM")         // e.g. http://ledger-api:8080
+	cfg.OfficeSecret = os.Getenv("PQC_OFFICE_SECRET")
+	cfg.UploadDir = os.Getenv("PQC_UPLOAD_DIR") // "" -> os.TempDir()
 	if boolEnv("PQC_RATE_LIMIT_DISABLED") {
 		cfg.RateLimits = &api.RateLimits{} // dev / scripted runs only
 	}

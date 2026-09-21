@@ -25,6 +25,11 @@ type Server struct {
 	Application string
 	Environment string
 	Logger      *slog.Logger
+
+	// Office app (nil Office = the routes are not mounted). See office.go.
+	Office  *OfficeConfig
+	Objects ObjectStore
+	TTD     TTDVerifier
 }
 
 func (s *Server) Routes() http.Handler {
@@ -48,6 +53,10 @@ func (s *Server) Routes() http.Handler {
 	})
 
 	r.Post("/documents", s.UploadDocument)
+
+	if s.Office != nil {
+		r.Route("/office", s.officeRoutes)
+	}
 
 	return r
 }

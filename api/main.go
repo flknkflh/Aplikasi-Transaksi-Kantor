@@ -61,20 +61,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	fabric, err := fabricclient.Connect(cfg)
-	if err != nil {
-		logger.Error("connect fabric gateway", "error", err)
-		os.Exit(1)
-	}
-	defer fabric.Close()
+	if cfg.FabricEnabled {
+		fabric, err := fabricclient.Connect(cfg)
+		if err != nil {
+			logger.Error("connect fabric gateway", "error", err)
+			os.Exit(1)
+		}
+		defer fabric.Close()
 
-	pollInterval, err := time.ParseDuration(cfg.OutboxPollInterval)
-	if err != nil {
-		logger.Error("parse OUTBOX_POLL_INTERVAL", "error", err)
-		os.Exit(1)
+		pollInterval, err := time.ParseDuration(cfg.OutboxPollInterval)
+		if err != nil {
+			logger.Error("parse OUTBOX_POLL_INTERVAL", "error", err)
+			os.Exit(1)
+		}
+		worker := outbox.NewWorker(db, fabric, pollInterval, cfg.OutboxMaxAttempts, logger)
+		go worker.Run(ctx)
+	} else {
+		logger.Warn("FABRIC_ENABLED=false: not connecting to Fabric; events stay queued in outbox_event")
 	}
-	worker := outbox.NewWorker(db, fabric, pollInterval, cfg.OutboxMaxAttempts, logger)
-	go worker.Run(ctx)
 
 	server := &httpapi.Server{
 		DB:          db,
@@ -84,6 +88,12 @@ func main() {
 		Application: cfg.Application,
 		Environment: cfg.Environment,
 		Logger:      logger,
+		Objects:     httpapi.MinIOObjects{Client: minioClient, Bucket: cfg.MinIOBucket},
+	}
+	if cfg.OfficeProxySecret != "" {
+		server.Office = &httpapi.OfficeConfig{ProxySecret: cfg.OfficeProxySecret, FabricEnabled: cfg.FabricEnabled}
+		server.TTD = httpapi.HTTPTTD{BaseURL: cfg.TTDInternalURL, Secret: cfg.OfficeProxySecret}
+		logger.Info("office app enabled", "ttd", cfg.TTDInternalURL, "fabric", cfg.FabricEnabled)
 	}
 
 	httpServer := &http.Server{

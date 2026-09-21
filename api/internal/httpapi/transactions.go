@@ -10,8 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-
-	"ledger/crypto"
 )
 
 type createTransactionRequest struct {
@@ -109,16 +107,6 @@ func (s *Server) RecordTransactionEvent(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 
-	var schemaVersion string
-	if err := s.DB.QueryRow(ctx, `SELECT schema_version FROM transaction WHERE id = $1`, transactionID).Scan(&schemaVersion); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "transaction not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -126,103 +114,27 @@ func (s *Server) RecordTransactionEvent(w http.ResponseWriter, r *http.Request) 
 	}
 	defer tx.Rollback(ctx)
 
-	nextSequence := 1
-	previousHash := ""
-	var lastSeq int
-	var lastHash string
-	err = tx.QueryRow(ctx, `
-		SELECT event_sequence, payload_hash FROM transaction_event
-		WHERE transaction_id = $1 ORDER BY event_sequence DESC LIMIT 1`, transactionID,
-	).Scan(&lastSeq, &lastHash)
-	switch {
-	case err == nil:
-		nextSequence = lastSeq + 1
-		previousHash = lastHash
-	case errors.Is(err, pgx.ErrNoRows):
-		// first event for this transaction
-	default:
-		writeError(w, http.StatusInternalServerError, "internal error")
+	ev, err := s.appendTransactionEvent(ctx, tx, eventInput{
+		TransactionID: transactionID, EventType: req.EventType, SignerIdentity: req.SignerIdentity,
+		Payload: req.Payload, NewStatus: req.NewStatus, IdempotencyKey: req.IdempotencyKey,
+	}, false)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "transaction not found")
 		return
 	}
-
-	identity, err := s.Keystore.SigningIdentity(ctx, req.SignerIdentity)
 	if err != nil {
-		s.Logger.Error("record event: signing identity", "error", err)
+		s.Logger.Error("record event", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-
-	signCtx := crypto.SigningContext{
-		Application:     s.Application,
-		Environment:     s.Environment,
-		TransactionType: req.EventType,
-		SchemaVersion:   schemaVersion,
-		TransactionID:   transactionID,
-	}
-	sig, payloadHash, err := crypto.SignHybrid(identity, signCtx, req.Payload)
-	if err != nil {
-		s.Logger.Error("record event: sign", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	createdAtServer := time.Now().UTC().Format(time.RFC3339)
-	eventID := uuid.NewString()
-
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO transaction_event (
-			id, transaction_id, event_sequence, event_type, payload_hash, previous_event_hash,
-			algorithm_suite, classical_key_id, pqc_key_id, classical_signature, pqc_signature,
-			idempotency_key, created_at_server
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		eventID, transactionID, nextSequence, req.EventType, payloadHash, previousHash,
-		string(sig.AlgorithmSuite), sig.ClassicalKeyID, sig.PQCKeyID, sig.ClassicalSignature, sig.PQCSignature,
-		req.IdempotencyKey, createdAtServer,
-	); err != nil {
-		s.Logger.Error("record event: insert", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	evt := chaincodeTransactionEvent{
-		TransactionID:      transactionID,
-		EventSequence:      nextSequence,
-		EventType:          req.EventType,
-		PayloadHash:        payloadHash,
-		PreviousEventHash:  previousHash,
-		AlgorithmSuite:     string(sig.AlgorithmSuite),
-		ClassicalKeyID:     sig.ClassicalKeyID,
-		PQCKeyID:           sig.PQCKeyID,
-		ClassicalSignature: sig.ClassicalSignature,
-		PQCSignature:       sig.PQCSignature,
-		IdempotencyKey:     req.IdempotencyKey,
-		CreatedAtServer:    createdAtServer,
-		NewStatus:          req.NewStatus,
-	}
-	evtJSON, err := json.Marshal(evt)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	payload, err := json.Marshal([]string{string(evtJSON)})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if err := enqueueOutbox(ctx, tx, "transaction", transactionID, "transaction", "RecordEvent", payload); err != nil {
-		s.Logger.Error("record event: enqueue outbox", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]interface{}{
-		"event_sequence": nextSequence,
-		"payload_hash":   payloadHash,
+		"event_sequence": ev.Sequence,
+		"payload_hash":   ev.PayloadHash,
 		"status":         "queued",
 	})
 }

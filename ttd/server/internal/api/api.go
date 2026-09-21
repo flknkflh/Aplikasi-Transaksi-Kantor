@@ -65,6 +65,12 @@ type Config struct {
 	// WebDir, when non-empty, serves the browser client (/app/) from this
 	// directory instead of the copy embedded at build time. Read at startup.
 	WebDir string
+
+	// Office integration (office.go): OfficeUpstream is the transaction service
+	// the /office/ proxy forwards to; OfficeSecret authenticates both directions.
+	// Both must be set to enable it.
+	OfficeUpstream string
+	OfficeSecret   string
 }
 
 // RateLimits — per-minute request caps (Rencana V1 §24). A zero value
@@ -301,6 +307,9 @@ func (s *Server) Routes() http.Handler {
 	// Static admin console (Rencana V1 §14 operator workflow, in a browser).
 	mux.HandleFunc("GET /admin", s.hAdminUI)
 	mux.HandleFunc("GET /admin/", s.hAdminUI)
+
+	// Transaction service behind the same origin (no-op unless configured).
+	s.mountOffice(mux)
 
 	// Browser client: static files only, same-origin (ttd/web).
 	s.mountWebApp(mux, s.cfg.WebDir)
