@@ -8,10 +8,13 @@
 #
 # Config comes from a `.env` file next to this one (see .env.example). The
 # important one is PQC_PUBLIC_BASE_URL — the QR codes point there and it is
-# the default server address the apps use. On a VPS set it to the public IP:
-#   PQC_PUBLIC_BASE_URL=http://136.244.116.132:8099
+# address the QR points at. Default is this machine; on a server set it to the
+# public address of the verification site, e.g.
+#   PQC_PUBLIC_BASE_URL=https://verify.example.id
 
-name: pqc-pdf-sign
+# Own project name + own ports (18099/18098) so this stack never collides with
+# a separately-run copy of the standalone PQC PDF Sign lab on 8099/8098.
+name: ledger-ttd
 
 services:
   postgres:
@@ -35,7 +38,7 @@ services:
     environment:
       PQC_DATABASE_URL: "postgres://pqc:${PQC_DB_PASSWORD:-pqc}@postgres:5432/pqc?sslmode=disable"
       PQC_JWT_SECRET: "${PQC_JWT_SECRET:-local-prototype-secret-change-me-0123456789}"
-      PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-http://136.244.116.132:8099}"
+      PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-http://localhost:18098}"
       # First boot bootstraps ONE super admin (creates/disables admins). Leave
       # the password empty in real deploys — the server generates one and
       # prints it to the log once. The lab uses a fixed one so seed.sh can log in.
@@ -54,8 +57,8 @@ services:
       - cadata:/ca
       - objdata:/objects
     ports:
-      - "8099:8099"   # full API (register / login / sign / admin)
-      - "8098:8098"   # verification-only site — no login, verify + QR pages only
+      - "${PQC_API_PORT:-18099}:8099"   # full API + browser client /app/ + /admin
+      - "${PQC_VERIFY_PORT:-18098}:8098"   # verification-only site — no login, verify + QR pages only
     depends_on:
       postgres:
         condition: service_healthy

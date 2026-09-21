@@ -22,6 +22,6 @@ export PQC_RATE_LIMIT_DISABLED=1
 # QR codes encode <public-base-url>/s/<id>. For phones, set PQC_PUBLIC_BASE_URL
 # to this machine's LAN IP on the verify port, e.g.
 #   PQC_PUBLIC_BASE_URL=http://172.16.23.177:8098
-PUBLIC_BASE="${PQC_PUBLIC_BASE_URL:-http://localhost:8098}"
+PUBLIC_BASE="${PQC_PUBLIC_BASE_URL:-http://localhost:18098}"
 echo ">> API on :8099   verify-only site on :8098   QR base=$PUBLIC_BASE"
 exec api --addr ":8099" --verify-addr ":8098" --public-base-url "$PUBLIC_BASE"

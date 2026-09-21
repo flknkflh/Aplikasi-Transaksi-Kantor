@@ -1,6 +1,6 @@
-# Local prototype image: the receiver API + the CA operator binary in one
-# small container. The CA is created on first boot into a persistent volume,
-# so data survives `docker compose up --build` and `docker compose down`
+# Local prototype image: the receiver API (which also serves the browser
+# client at /app/) + the CA operator binary in one small container. The CA is
+# created on first boot into a persistent volume, so data survives `docker compose up --build` and `docker compose down`
 # (only `down -v` wipes it). Build context is the repo root.
 
 FROM golang:1.27 AS build
@@ -8,9 +8,14 @@ WORKDIR /src
 COPY core/ ./core/
 COPY server/ ./server/
 COPY tools/ ./tools/
+COPY web/build.sh ./web/build.sh
+COPY web/src/ ./web/src/
+# 1) browser client: Go core -> pqcsign.wasm + static files, into the dir the
+#    server embeds; 2) the server (embeds it) and ca-admin — pure Go, no cgo.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    cd server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
+    bash web/build.sh && \
+    cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
     cd /src/tools/ca-admin && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ca-admin .
 
 FROM alpine:3.20
@@ -20,5 +25,5 @@ COPY --from=build /out/api /usr/local/bin/api
 COPY --from=build /out/ca-admin /usr/local/bin/ca-admin
 COPY deploy/local/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-EXPOSE 8099
+EXPOSE 8099 8098
 ENTRYPOINT ["/entrypoint.sh"]

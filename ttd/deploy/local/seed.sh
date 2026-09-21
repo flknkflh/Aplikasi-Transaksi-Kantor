@@ -7,7 +7,7 @@
 #
 #   deploy/local/seed.sh [base-url]
 set -euo pipefail
-BASE="${1:-http://localhost:8099}"; BASE="${BASE%/}"
+BASE="${1:-http://localhost:18099}"; BASE="${BASE%/}"
 SU_USER="${PQC_SUPERADMIN_USERNAME:-superadmin}"
 SU_PASS="${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
 jval() { sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1; }
@@ -35,5 +35,5 @@ cat <<EOF
 
   Admin console : $BASE/admin        ($SU_USER / $SU_PASS  — super admin)
                   $BASE/admin        (admin@local / admin12345)
-  App login     : $BASE              (user@local / user12345)
+  Browser app   : $BASE/app/         (user@local / user12345)
 EOF

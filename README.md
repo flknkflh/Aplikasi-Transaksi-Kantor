@@ -26,6 +26,32 @@ liboqs. (An earlier revision used liboqs for ML-DSA on a mistaken reading of
 the Go release notes; corrected in
 [docs/adr/0001-fase1-spike-scope.md](docs/adr/0001-fase1-spike-scope.md), addendum.)
 
+## TTD Digital (browser)
+
+Digital signatures on PDF documents, using the mechanism of the owner's *PQC PDF Sign V1*
+project (`ttd/`, provenance in [ttd/PROVENANCE.md](ttd/PROVENANCE.md)) but as a **browser
+app instead of an .exe/Android app**: the Go signing core runs as WebAssembly in a Web
+Worker, the ML-DSA-65 key is generated in the browser under a mandatory PIN and never
+leaves it, and the server has no signing endpoint. Design and trade-offs:
+[docs/adr/0002-ttd-browser.md](docs/adr/0002-ttd-browser.md),
+[ttd/docs/threat-model-browser.md](ttd/docs/threat-model-browser.md).
+
+```bash
+# no Docker: lab CA + in-memory server, then open http://127.0.0.1:8099/app/
+bash ttd/web/build.sh && bash ttd/tools/dev-up.sh          # shell 1
+bash ttd/tools/dev-admin.sh                                # shell 2 -> user@local / user12345
+
+# Docker (Postgres + API + CA): see ttd/deploy/local/README.md  -> http://localhost:18099/app/
+
+# tests: real wasm under Node, and the real-Chrome end-to-end run
+(cd ttd && node --test web/test/wasm.test.mjs)
+(cd ttd/web/e2e && npm ci && node run.mjs)
+```
+
+Status: works end to end in a real browser against the lab CA (49 e2e checks). **Not
+production**: lab (online) CA, no trusted timestamp, and anchoring signed-PDF hashes into the
+Fabric ledger is not built yet (deferred by decision).
+
 ## Prerequisites
 
 - Docker Desktop (Windows/Mac: host.docker.internal support is used to let
@@ -42,6 +68,7 @@ the Go release notes; corrected in
 
 ```
 docs/            PRD, ADRs
+ttd/             digital signature (TTD): imported PQC PDF Sign core/server/CA + browser client (web/)
 crypto/          hybrid signing/KEM library (Ed25519+ML-DSA-65, X25519+ML-KEM-768)
 chaincode/       Fabric Go chaincode: transaction, asset
 network/         Fabric test-network bootstrap + config
