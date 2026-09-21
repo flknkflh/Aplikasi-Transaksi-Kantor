@@ -45,6 +45,29 @@ func (o *memObjects) Put(_ context.Context, k string, d []byte, _ string) error 
 	o.m[k] = append([]byte(nil), d...)
 	return nil
 }
+func (o *memObjects) PutStream(ctx context.Context, k string, r io.Reader, size int64, ct string) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if int64(len(b)) != size {
+		return fmt.Errorf("size mismatch: got %d want %d", len(b), size)
+	}
+	return o.Put(ctx, k, b, ct)
+}
+func (o *memObjects) GetStream(ctx context.Context, k string) (io.ReadCloser, error) {
+	b, err := o.Get(ctx, k)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewReader(b)), nil
+}
+func (o *memObjects) Delete(_ context.Context, k string) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.m, k)
+	return nil
+}
 func (o *memObjects) Get(_ context.Context, k string) ([]byte, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -141,8 +164,12 @@ func newHarness(t *testing.T) *harness {
 	ttd := &fakeTTD{recs: map[string]TTDRecord{}, pdfs: map[string][]byte{}}
 	srv := &Server{
 		DB: db, Keystore: ks, Objects: obj, TTD: ttd, Application: "test", Environment: "test", Bucket: "b",
-		Logger: slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Office: &OfficeConfig{ProxySecret: testSecret},
+		Logger:  slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		Office:  &OfficeConfig{ProxySecret: testSecret},
+		Archive: &ArchiveConfig{TempDir: t.TempDir(), ServerName: "Server Uji", MaxBytes: 8 << 20},
+	}
+	if err := srv.InitArchive(ctx); err != nil {
+		t.Fatal(err)
 	}
 	return &harness{t: t, srv: srv, h: srv.Routes(), db: db, ttd: ttd, obj: obj}
 }
@@ -168,6 +195,7 @@ func (h *harness) do(u *user, method, path string, body io.Reader, ctype string)
 		req.Header.Set("X-Office-Email", u.id+"@test")
 		req.Header.Set("X-Office-Name", strings.TrimPrefix(u.id, "acct_"))
 		req.Header.Set("X-Office-Role", u.role)
+		req.Header.Set("X-Forwarded-For", "203.0.113.7")
 	}
 	w := httptest.NewRecorder()
 	h.h.ServeHTTP(w, req)

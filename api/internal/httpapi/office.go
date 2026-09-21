@@ -94,6 +94,9 @@ func (s *Server) officeRoutes(r chi.Router) {
 	r.Post("/transactions/{id}/complete", s.officeComplete)
 	r.Post("/transactions/{id}/cancel", s.officeCancel)
 	r.Get("/documents/{id}", s.officeDownload)
+	if s.Archive != nil {
+		r.Route("/archive", s.archiveRoutes)
+	}
 }
 
 // ---------------------------------------------------------------- identity/roles

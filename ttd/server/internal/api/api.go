@@ -70,7 +70,10 @@ type Config struct {
 	// the /office/ proxy forwards to; OfficeSecret authenticates both directions.
 	// Both must be set to enable it.
 	OfficeUpstream string
-	OfficeSecret   string
+	// ServerName is shown on the login page ("Server tujuan") so users can confirm
+	// which server they are about to send data to.
+	ServerName   string
+	OfficeSecret string
 }
 
 // RateLimits — per-minute request caps (Rencana V1 §24). A zero value
@@ -275,6 +278,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /s/{public_id}", s.hScanResolver)            // QR target: confirm server address, then -> /v/{id}
 	mux.HandleFunc("GET /v/{public_id}", s.hVerifyPage)              // human landing page
 	mux.HandleFunc("GET /v/{public_id}/document", s.hPublicDocument) // authoritative signed PDF behind the QR
+	mux.HandleFunc("GET /api/v1/public/server", s.hPublicServer)
 	mux.HandleFunc("GET /api/v1/public/ca/root.crt", s.pem(func() []byte { return s.cfg.RootCAPEM }))
 	mux.HandleFunc("GET /api/v1/public/ca/chain.pem", s.pem(func() []byte { return s.cfg.CAChainPEM }))
 	mux.HandleFunc("GET /api/v1/public/ca/crl.pem", s.pem(func() []byte { return s.crl }))

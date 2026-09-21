@@ -31,7 +31,10 @@ type officeIdentity struct {
 	Email      string
 	Name       string
 	TTDRole    string // user | admin | superadmin (from the TTD account)
-	OfficeRole string // requester | approver | auditor
+	OfficeRole string // requester | approver | auditor (legacy approval workflow)
+	// The office (kantor) the sender belongs to, set by the central admin. Empty = unassigned.
+	OrgID   string
+	OrgName string
 }
 
 func (i officeIdentity) isAdmin() bool { return i.TTDRole == "admin" || i.TTDRole == "superadmin" }
@@ -90,6 +93,9 @@ func (s *Server) officeAuth(next http.Handler) http.Handler {
 		if err := s.DB.QueryRow(ctx, `SELECT role FROM office_role WHERE account_id = $1`, id.ID).Scan(&role); err == nil && validOfficeRoles[role] {
 			id.OfficeRole = role
 		}
+		_ = s.DB.QueryRow(ctx, `
+			SELECT m.organization_id, o.name FROM office_member m JOIN organization o ON o.id = m.organization_id
+			WHERE m.account_id = $1`, id.ID).Scan(&id.OrgID, &id.OrgName)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, officeCtxKey{}, id)))
 	})
 }

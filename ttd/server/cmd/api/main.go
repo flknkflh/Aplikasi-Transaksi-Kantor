@@ -52,6 +52,7 @@ func main() {
 	cfg.WebDir = os.Getenv("PQC_WEB_DIR")                         // "" -> embedded browser client
 	cfg.OfficeUpstream = os.Getenv("PQC_OFFICE_UPSTREAM")         // e.g. http://ledger-api:8080
 	cfg.OfficeSecret = os.Getenv("PQC_OFFICE_SECRET")
+	cfg.ServerName = envOr("PQC_SERVER_NAME", "Server Arsip")
 	cfg.UploadDir = os.Getenv("PQC_UPLOAD_DIR") // "" -> os.TempDir()
 	if boolEnv("PQC_RATE_LIMIT_DISABLED") {
 		cfg.RateLimits = &api.RateLimits{} // dev / scripted runs only

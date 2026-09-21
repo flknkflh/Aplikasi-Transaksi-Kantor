@@ -67,6 +67,9 @@ func (s *Server) mountOffice(mux *http.ServeMux) {
 			}
 		}
 		r.Header.Del("Authorization")
+		// The peer address the ledger records is the real one: drop any client-supplied
+		// chain so ReverseProxy sets X-Forwarded-For from the actual connection.
+		r.Header.Del("X-Forwarded-For")
 		name := acc.DisplayName
 		if name == "" {
 			name = acc.FullName
@@ -76,12 +79,41 @@ func (s *Server) mountOffice(mux *http.ServeMux) {
 		r.Header.Set("X-Office-Email", acc.Email)
 		r.Header.Set("X-Office-Name", name)
 		r.Header.Set("X-Office-Role", acc.Role)
-		r.Body = http.MaxBytesReader(w, r.Body, 40<<20)
+		// Uploads arrive in 8 MiB chunks (archive protocol); the ledger service enforces its own caps.
+		r.Body = http.MaxBytesReader(w, r.Body, 72<<20)
+		proxy.ServeHTTP(w, r)
+	}))
+
+	// Public receipt check: anyone holding a receipt id can see it is genuine. The
+	// receipt id is an unguessable capability; the request is rate-limited by IP and
+	// only ever forwarded to the one read-only upstream route.
+	mux.HandleFunc("GET /api/v1/public/receipts/{receipt_id}", s.limit(s.rlVerify, byIP, func(w http.ResponseWriter, r *http.Request) {
+		r = r.Clone(r.Context())
+		for k := range r.Header {
+			if strings.HasPrefix(strings.ToLower(k), "x-office-") {
+				r.Header.Del(k)
+			}
+		}
+		r.Header.Del("Authorization")
+		r.Header.Del("X-Forwarded-For")
+		r.Header.Set("X-Office-Secret", s.cfg.OfficeSecret)
+		r.URL.Path = "/public/receipts/" + r.PathValue("receipt_id")
+		r.URL.RawPath = ""
 		proxy.ServeHTTP(w, r)
 	}))
 
 	mux.HandleFunc("GET /internal/office/signatures/{public_id}", s.officeSecret(s.hOfficeSignature))
 	mux.HandleFunc("GET /internal/office/signatures/{public_id}/document", s.officeSecret(s.hOfficeSignatureDocument))
+}
+
+// hPublicServer tells a not-yet-logged-in user which server they are talking to, so
+// they can confirm it is the one they meant to send data to.
+func (s *Server) hPublicServer(w http.ResponseWriter, r *http.Request) {
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"server_name": s.cfg.ServerName, "host": r.Host, "https": secure,
+		"office_enabled": s.cfg.OfficeUpstream != "" && len(s.cfg.OfficeSecret) >= 16,
+	})
 }
 
 func (s *Server) officeSecret(h http.HandlerFunc) http.HandlerFunc {

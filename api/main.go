@@ -55,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ks, err := keystore.Open(cfg.KeystorePath, db)
+	ks, err := keystore.OpenEncrypted(cfg.KeystorePath, db, cfg.KeystoreKEK)
 	if err != nil {
 		logger.Error("open keystore", "error", err)
 		os.Exit(1)
@@ -94,6 +94,13 @@ func main() {
 		server.Office = &httpapi.OfficeConfig{ProxySecret: cfg.OfficeProxySecret, FabricEnabled: cfg.FabricEnabled}
 		server.TTD = httpapi.HTTPTTD{BaseURL: cfg.TTDInternalURL, Secret: cfg.OfficeProxySecret}
 		logger.Info("office app enabled", "ttd", cfg.TTDInternalURL, "fabric", cfg.FabricEnabled)
+		server.Archive = &httpapi.ArchiveConfig{TempDir: cfg.ArchiveTempDir, MaxBytes: cfg.ArchiveMaxBytes, ServerName: cfg.ServerName}
+		if err := server.InitArchive(ctx); err != nil {
+			logger.Error("init archive", "error", err)
+			os.Exit(1)
+		}
+		go server.RunArchiveJanitor(ctx, time.Hour)
+		logger.Info("archive enabled", "server_name", cfg.ServerName, "temp", cfg.ArchiveTempDir)
 	}
 
 	httpServer := &http.Server{

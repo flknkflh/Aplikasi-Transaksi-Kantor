@@ -181,3 +181,54 @@ func TestOfficeIsOffUnlessConfigured(t *testing.T) {
 		t.Fatalf("a short secret must disable the office routes, got %d", w.Code)
 	}
 }
+
+func TestOfficeProxyResetsTheClientAddressAndForwardsLargeChunks(t *testing.T) {
+	e, up := officeEnv(t)
+	user := e.account("pengirim@test", store.RoleUser)
+	chunk := bytes.Repeat([]byte{7}, 9<<20) // an archive chunk, bigger than the old 40 MiB-era assumptions of small forms
+	w := e.doHdr("PATCH", "/office/archive/uploads/upl_1", user, chunk, map[string]string{
+		"Upload-Offset": "0", "X-Forwarded-For": "6.6.6.6", // a spoofed address
+	})
+	if w.Code != 200 {
+		t.Fatalf("chunk through the proxy: %d %s", w.Code, w.Body.String())
+	}
+	if len(up.body) != len(chunk) || up.last.Header.Get("Upload-Offset") != "0" {
+		t.Fatalf("the chunk and its headers must arrive intact: %d bytes, offset %q", len(up.body), up.last.Header.Get("Upload-Offset"))
+	}
+	if xff := up.last.Header.Get("X-Forwarded-For"); strings.Contains(xff, "6.6.6.6") || xff == "" {
+		t.Fatalf("X-Forwarded-For must come from the real connection, not the client: %q", xff)
+	}
+}
+
+func TestPublicReceiptRouteIsAnonymousReadOnlyAndSecretBacked(t *testing.T) {
+	e, up := officeEnv(t)
+	// no login at all
+	w := e.doHdr("GET", "/api/v1/public/receipts/rcp_abc123", "", nil, map[string]string{"X-Office-Account": "spoof", "X-Forwarded-For": "6.6.6.6"})
+	if w.Code != 200 {
+		t.Fatalf("public receipt: %d %s", w.Code, w.Body.String())
+	}
+	got := up.last
+	if got.URL.Path != "/public/receipts/rcp_abc123" {
+		t.Fatalf("upstream path = %q", got.URL.Path)
+	}
+	if got.Header.Get("X-Office-Secret") != officeSecret || got.Header.Get("X-Office-Account") != "" {
+		t.Fatalf("the proxy must present its own secret and no caller identity: %v", got.Header)
+	}
+	// only GET; nothing else under that prefix
+	if w := e.doHdr("POST", "/api/v1/public/receipts/rcp_abc123", "", nil, nil); w.Code == 200 {
+		t.Fatal("the public receipt route is read-only")
+	}
+}
+
+func TestPublicServerInfoNamesTheServer(t *testing.T) {
+	e := newEnvWith(t, func(c *api.Config) { c.ServerName = "Arsip Pusat"; c.OfficeUpstream = "http://127.0.0.1:1"; c.OfficeSecret = officeSecret })
+	w := e.doHdr("GET", "/api/v1/public/server", "", nil, nil)
+	mustCode(t, w, http.StatusOK)
+	b := jbody(t, w)
+	if b["server_name"] != "Arsip Pusat" || b["office_enabled"] != true || b["https"] != false {
+		t.Fatalf("server info: %v", b)
+	}
+	if !strings.Contains(b["host"].(string), "example.com") && b["host"] == "" {
+		t.Fatalf("host must be reported: %v", b)
+	}
+}

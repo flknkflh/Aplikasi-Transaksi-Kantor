@@ -7,6 +7,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 
 	// Dev-only signing keystore (see docs/adr/0001 decision #4)
 	KeystorePath string
+	// KeystoreKEK encrypts the keystore file at rest (AES-256-GCM). Required wherever the
+	// server holds keys that people are accountable for.
+	KeystoreKEK string
 
 	// Signing context (crypto.SigningContext)
 	Application string
@@ -48,7 +52,13 @@ type Config struct {
 	// Office app: enabled when OfficeProxySecret is set. TTDInternalURL is how
 	// this service reaches the TTD server to verify approval signatures.
 	OfficeProxySecret string
-	TTDInternalURL    string
+
+	// Archive app: scratch dir for resumable uploads, per-file ceiling (bytes, 0 = 20 GiB),
+	// and the server name users see so they can confirm where they are sending.
+	ArchiveTempDir  string
+	ArchiveMaxBytes int64
+	ServerName      string
+	TTDInternalURL  string
 
 	OutboxPollInterval string // parsed by main via time.ParseDuration
 	OutboxMaxAttempts  int
@@ -66,6 +76,7 @@ func Load() Config {
 		MinIOBucket:    getEnv("MINIO_BUCKET", "ledger-documents"),
 
 		KeystorePath: getEnv("KEYSTORE_PATH", "./keystore/dev-keystore.json"),
+		KeystoreKEK:  getEnv("KEYSTORE_KEK", ""),
 
 		Application: getEnv("SIGNING_APPLICATION", "pqc-ledger"),
 		Environment: getEnv("SIGNING_ENVIRONMENT", "dev"),
@@ -80,6 +91,9 @@ func Load() Config {
 
 		FabricEnabled:     getEnv("FABRIC_ENABLED", "true") != "false",
 		OfficeProxySecret: getEnv("OFFICE_PROXY_SECRET", ""),
+		ArchiveTempDir:    getEnv("ARCHIVE_TEMP_DIR", filepath.Join(os.TempDir(), "archive-uploads")),
+		ArchiveMaxBytes:   int64(getEnvInt("ARCHIVE_MAX_BYTES", 0)),
+		ServerName:        getEnv("SERVER_NAME", "Server Arsip"),
 		TTDInternalURL:    getEnv("TTD_INTERNAL_URL", "http://localhost:8099"),
 
 		OutboxPollInterval: getEnv("OUTBOX_POLL_INTERVAL", "2s"),

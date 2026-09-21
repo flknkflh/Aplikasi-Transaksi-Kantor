@@ -28,6 +28,8 @@ type Server struct {
 
 	// Office app (nil Office = the routes are not mounted). See office.go.
 	Office  *OfficeConfig
+	Archive *ArchiveConfig
+	arch    archiveRuntime
 	Objects ObjectStore
 	TTD     TTDVerifier
 }
@@ -56,6 +58,9 @@ func (s *Server) Routes() http.Handler {
 
 	if s.Office != nil {
 		r.Route("/office", s.officeRoutes)
+		if s.Archive != nil {
+			r.Get("/public/receipts/{receipt_id}", s.proxyOnly(s.publicReceipt))
+		}
 	}
 
 	return r
