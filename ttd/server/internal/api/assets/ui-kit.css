@@ -1,0 +1,577 @@
+/* =====================================================================
+   PQC PDF Sign — Liquid Glass UI Kit
+   Shared by the admin console (:8099/admin) and the public verifier (:8098).
+   Light  = "Arctic Quantum Glass"   Dark = "Midnight Quantum Glass"
+   Palette: Assets/PALET-WARNA-PQC-PDF-SIGN-LIQUID-GLASS.txt
+   ===================================================================== */
+
+/* ---------- animatable custom properties ---------------------------
+   Registering them lets CSS *transition* and *animate* the values, which
+   is what makes the rotating border gradient and the spring press work
+   without any JS. Browsers without @property just snap instead.        */
+@property --pqc-ang  { syntax:"<angle>";  initial-value:0deg; inherits:false; }
+@property --lift     { syntax:"<length>"; initial-value:0px;  inherits:false; }
+@property --press    { syntax:"<number>"; initial-value:1;    inherits:false; }
+@property --glow-o   { syntax:"<number>"; initial-value:0;    inherits:false; }
+@property --ring     { syntax:"<length>"; initial-value:0px;  inherits:false; }
+
+/* ---------- design tokens : LIGHT (default) ------------------------- */
+:root {
+  color-scheme: light;
+
+  --bg-primary:#F7FBFF;  --bg-secondary:#EEF7FF; --bg-tertiary:#E5F1FB;
+  --bg-snow:#FCFEFF;      --bg-ice:#EAF6FF;
+
+  --surface-primary:#FFFFFF; --surface-secondary:#F6FAFF; --surface-muted:#EDF5FC;
+
+  --glass-bg:rgba(255,255,255,.52);
+  --glass-bg-strong:rgba(255,255,255,.72);
+  --glass-bg-soft:rgba(236,247,255,.38);
+  --glass-border:rgba(255,255,255,.78);
+  --glass-border-blue:rgba(110,190,255,.42);
+  --glass-highlight:rgba(255,255,255,.92);
+  --glass-shadow:rgba(44,112,170,.16);
+  --glass-blur:blur(24px) saturate(145%);
+  --glass-box:0 12px 40px rgba(38,99,142,.14), inset 0 1px 0 rgba(255,255,255,.82);
+
+  --blue-100:#DFF1FF; --blue-200:#B9E2FF; --blue-300:#85CEFF; --blue-400:#4DB8FF;
+  --blue-500:#169BFF; --blue-600:#087BDD; --blue-700:#0761B4; --blue-900:#0B3F70;
+  --cyan-300:#7AEAFF; --cyan-400:#35D9F5; --cyan-500:#08BEDF;
+  --violet-300:#C3A8FF; --violet-400:#9E78FF; --violet-500:#7B55E7;
+
+  --text-primary:#102A43; --text-secondary:#486581; --text-muted:#829AB1;
+  --text-inverse:#FFFFFF; --text-link:#087BDD;
+
+  --border-soft:#DCEAF5; --border-medium:#C4D9EA; --border-active:#59BFFF;
+
+  --success:#12B886; --success-soft:#DFF8EF;
+  --warning:#F5A524; --warning-soft:#FFF3D6;
+  --danger:#E5484D;  --danger-soft:#FFE8E8;
+  --info:#169BFF;    --info-soft:#E0F2FF;
+
+  --secure:#0EA5E9; --verified:#18B6A4; --trusted:#2563EB; --quantum:#7C5CFC;
+  --qr-primary:#0B8FFF; --qr-secondary:#20D6E5;
+
+  --glow-blue:rgba(22,155,255,.30); --glow-cyan:rgba(53,217,245,.28); --glow-violet:rgba(158,120,255,.20);
+  --shadow-lg:rgba(30,80,120,.20);
+
+  --grad-primary:linear-gradient(135deg,#169BFF 0%,#35D9F5 52%,#9E78FF 100%);
+  --grad-soft:linear-gradient(135deg,#F7FBFF 0%,#E9F6FF 50%,#F0EAFF 100%);
+  --grad-glass:linear-gradient(135deg,rgba(255,255,255,.78) 0%,rgba(202,235,255,.42) 55%,rgba(222,209,255,.34) 100%);
+
+  /* photographic backdrop from Assets/ (light = "Arctic" snow-mountain) */
+  --page-bg:url("/assets/img/bg-light.png");
+  --scrim:linear-gradient(180deg,rgba(247,251,255,.30) 0%,rgba(247,251,255,.55) 55%,rgba(238,247,255,.78) 100%);
+  --dust-color:12,110,190;
+
+  --nav-bg:rgba(255,255,255,.58); --nav-border:rgba(255,255,255,.80);
+
+  /* animated mesh-gradient wash + pointer aura */
+  --mesh-1:rgba(53,217,245,.42); --mesh-2:rgba(22,155,255,.34);
+  --mesh-3:rgba(158,120,255,.30); --mesh-4:rgba(120,235,255,.30);
+  --mesh-opacity:.45; --mesh-blend:soft-light;
+  --aura:rgba(22,155,255,.30); --aura-blend:multiply; --aura-opacity:.30;
+  --spot:rgba(255,255,255,.55);
+
+  --radius-lg:22px; --radius-md:14px; --radius-sm:9px;
+  --ease-glass:cubic-bezier(.22,1,.36,1);
+  /* overshooting curve — the "spring" in every microinteraction */
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --ease-spring-soft:cubic-bezier(.22,1.35,.52,1);
+}
+
+/* ---------- design tokens : DARK --------------------------------------
+   redefined under both the system-preference guard and the explicit
+   [data-theme="dark"] so the manual toggle wins in either direction.  */
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+
+@media (prefers-color-scheme: dark) {
+:root:not([data-theme="light"]) {
+  --bg-primary:#050B18;  --bg-secondary:#081225; --bg-tertiary:#0B1930;
+  --bg-snow:#030814;     --bg-ice:#07172B;
+
+  --surface-primary:#0A1830; --surface-secondary:#0D203A; --surface-muted:#102945;
+
+  --glass-bg:rgba(9,25,48,.58);
+  --glass-bg-strong:rgba(10,28,54,.78);
+  --glass-bg-soft:rgba(18,43,75,.34);
+  --glass-border:rgba(147,214,255,.20);
+  --glass-border-blue:rgba(45,212,255,.42);
+  --glass-highlight:rgba(190,233,255,.38);
+  --glass-shadow:rgba(0,0,0,.45);
+  --glass-blur:blur(24px) saturate(135%);
+  --glass-box:0 14px 48px rgba(0,0,0,.42), 0 0 30px rgba(10,159,255,.08), inset 0 1px 0 rgba(188,231,255,.16);
+
+  --blue-100:#D8F2FF; --blue-200:#A7E1FF; --blue-300:#6ECDFF; --blue-400:#39B8FF;
+  --blue-500:#0A9FFF; --blue-600:#087EDF; --blue-700:#0865B5; --blue-900:#0B3F70;
+  --cyan-300:#55ECFF; --cyan-400:#1CDFF5; --cyan-500:#00C5DC;
+  --violet-300:#B99CFF; --violet-400:#9566FF; --violet-500:#783CF0;
+
+  --text-primary:#F3F9FF; --text-secondary:#C4D7E8; --text-muted:#7F9DB8;
+  --text-inverse:#07111E; --text-link:#51C8FF;
+
+  --border-soft:#193A57; --border-medium:#28506E; --border-active:#2BD7FF;
+
+  --success:#2AD6A0; --success-soft:rgba(42,214,160,.14);
+  --warning:#FFB84D; --warning-soft:rgba(255,184,77,.14);
+  --danger:#FF6470;  --danger-soft:rgba(255,100,112,.14);
+  --info:#38BDF8;    --info-soft:rgba(56,189,248,.14);
+
+  --secure:#22D3EE; --verified:#2DD4BF; --trusted:#4F8CFF; --quantum:#9B6CFF;
+  --qr-primary:#20C8FF; --qr-secondary:#8B5CFF;
+
+  --glow-blue:rgba(30,144,255,.42); --glow-cyan:rgba(0,220,255,.38); --glow-violet:rgba(139,92,246,.36);
+  --shadow-lg:rgba(0,0,0,.52);
+
+  --grad-primary:linear-gradient(135deg,#0A9FFF 0%,#1CDFF5 45%,#9566FF 100%);
+  --grad-soft:linear-gradient(135deg,#030814 0%,#07172B 52%,#160E34 100%);
+  --grad-glass:linear-gradient(135deg,rgba(21,55,91,.62) 0%,rgba(9,28,53,.48) 50%,rgba(64,37,112,.38) 100%);
+
+  --page-bg:url("/assets/img/bg-dark.png");
+  --scrim:linear-gradient(180deg,rgba(3,8,20,.34) 0%,rgba(5,14,30,.55) 52%,rgba(5,11,24,.82) 100%);
+  --dust-color:150,220,255;
+
+  --nav-bg:rgba(5,14,30,.60); --nav-border:rgba(97,194,255,.18);
+  --mesh-1:rgba(0,220,255,.30); --mesh-2:rgba(30,144,255,.32);
+  --mesh-3:rgba(139,92,246,.34); --mesh-4:rgba(0,180,255,.22);
+  --mesh-opacity:.60; --mesh-blend:screen;
+  --aura:rgba(0,200,255,.34); --aura-blend:screen; --aura-opacity:.42;
+  --spot:rgba(120,220,255,.16);
+}
+}
+
+:root[data-theme="dark"] {
+  --bg-primary:#050B18;  --bg-secondary:#081225; --bg-tertiary:#0B1930;
+  --bg-snow:#030814;     --bg-ice:#07172B;
+  --surface-primary:#0A1830; --surface-secondary:#0D203A; --surface-muted:#102945;
+  --glass-bg:rgba(9,25,48,.58);
+  --glass-bg-strong:rgba(10,28,54,.78);
+  --glass-bg-soft:rgba(18,43,75,.34);
+  --glass-border:rgba(147,214,255,.20);
+  --glass-border-blue:rgba(45,212,255,.42);
+  --glass-highlight:rgba(190,233,255,.38);
+  --glass-shadow:rgba(0,0,0,.45);
+  --glass-blur:blur(24px) saturate(135%);
+  --glass-box:0 14px 48px rgba(0,0,0,.42), 0 0 30px rgba(10,159,255,.08), inset 0 1px 0 rgba(188,231,255,.16);
+  --blue-100:#D8F2FF; --blue-200:#A7E1FF; --blue-300:#6ECDFF; --blue-400:#39B8FF;
+  --blue-500:#0A9FFF; --blue-600:#087EDF; --blue-700:#0865B5; --blue-900:#0B3F70;
+  --cyan-300:#55ECFF; --cyan-400:#1CDFF5; --cyan-500:#00C5DC;
+  --violet-300:#B99CFF; --violet-400:#9566FF; --violet-500:#783CF0;
+  --text-primary:#F3F9FF; --text-secondary:#C4D7E8; --text-muted:#7F9DB8;
+  --text-inverse:#07111E; --text-link:#51C8FF;
+  --border-soft:#193A57; --border-medium:#28506E; --border-active:#2BD7FF;
+  --success:#2AD6A0; --success-soft:rgba(42,214,160,.14);
+  --warning:#FFB84D; --warning-soft:rgba(255,184,77,.14);
+  --danger:#FF6470;  --danger-soft:rgba(255,100,112,.14);
+  --info:#38BDF8;    --info-soft:rgba(56,189,248,.14);
+  --secure:#22D3EE; --verified:#2DD4BF; --trusted:#4F8CFF; --quantum:#9B6CFF;
+  --qr-primary:#20C8FF; --qr-secondary:#8B5CFF;
+  --glow-blue:rgba(30,144,255,.42); --glow-cyan:rgba(0,220,255,.38); --glow-violet:rgba(139,92,246,.36);
+  --shadow-lg:rgba(0,0,0,.52);
+  --grad-primary:linear-gradient(135deg,#0A9FFF 0%,#1CDFF5 45%,#9566FF 100%);
+  --grad-soft:linear-gradient(135deg,#030814 0%,#07172B 52%,#160E34 100%);
+  --grad-glass:linear-gradient(135deg,rgba(21,55,91,.62) 0%,rgba(9,28,53,.48) 50%,rgba(64,37,112,.38) 100%);
+  --page-bg:url("/assets/img/bg-dark.png");
+  --scrim:linear-gradient(180deg,rgba(3,8,20,.34) 0%,rgba(5,14,30,.55) 52%,rgba(5,11,24,.82) 100%);
+  --dust-color:150,220,255;
+  --nav-bg:rgba(5,14,30,.60); --nav-border:rgba(97,194,255,.18);
+  --mesh-1:rgba(0,220,255,.30); --mesh-2:rgba(30,144,255,.32);
+  --mesh-3:rgba(139,92,246,.34); --mesh-4:rgba(0,180,255,.22);
+  --mesh-opacity:.60; --mesh-blend:screen;
+  --aura:rgba(0,200,255,.34); --aura-blend:screen; --aura-opacity:.42;
+  --spot:rgba(120,220,255,.16);
+}
+
+/* ---------- base ---------------------------------------------------- */
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  margin:0; min-height:100vh;
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--text-primary);
+  background:var(--bg-primary);
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  transition:color .5s var(--ease-glass);
+}
+a { color:var(--text-link); }
+::selection { background:var(--cyan-400); color:var(--text-inverse); }
+
+/* ---------- photographic backdrop (from Assets/) ------------------ */
+/* fixed, full-bleed, swaps by theme via --page-bg */
+body::before {
+  content:""; position:fixed; inset:0; z-index:-5; pointer-events:none;
+  background-image:var(--page-bg);
+  background-size:cover; background-position:center center; background-repeat:no-repeat;
+  background-attachment:fixed;
+  transition:opacity .5s var(--ease-glass);
+}
+
+/* ---- 7. gradient flow / mesh gradient ---------------------------
+   Four soft colour fields drifting over the photo. It never replaces the
+   backdrop — it only makes the light on it move.                      */
+.lg-mesh {
+  position:fixed; inset:-12%; z-index:-4; pointer-events:none;
+  opacity:var(--mesh-opacity); mix-blend-mode:var(--mesh-blend); filter:blur(24px);
+  background-image:
+    radial-gradient(38% 44% at 18% 22%, var(--mesh-1), transparent 62%),
+    radial-gradient(34% 40% at 82% 18%, var(--mesh-2), transparent 62%),
+    radial-gradient(42% 46% at 68% 84%, var(--mesh-3), transparent 62%),
+    radial-gradient(36% 42% at 12% 82%, var(--mesh-4), transparent 62%);
+  animation:meshDrift 28s ease-in-out infinite alternate;
+  will-change:transform;
+}
+@keyframes meshDrift {
+  0%   { transform:translate3d(0,0,0)      scale(1)    rotate(0deg); }
+  50%  { transform:translate3d(2.5%,-2%,0) scale(1.10) rotate(2.5deg); }
+  100% { transform:translate3d(-2%,2.5%,0) scale(1.05) rotate(-2.5deg); }
+}
+
+/* thin theme-tinted wash so text over the photo stays readable */
+.lg-scrim { position:fixed; inset:0; z-index:-3; pointer-events:none; background:var(--scrim); }
+
+/* ---- 3. particle / data-flow canvas ------------------------------ */
+#lg-flow { position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.9; }
+
+/* decorative floating brand-logo accents behind the content — kept very
+   faint and softly blurred so they read as glow, not as a watermark */
+.lg-orb { position:fixed; z-index:-1; pointer-events:none; opacity:.07;
+          filter:blur(3px) drop-shadow(0 20px 60px var(--glow-blue)); will-change:transform; }
+.lg-orb-a { width:min(26vw,300px); left:-9vw; bottom:4vh; }
+.lg-orb-b { width:min(20vw,240px); right:-7vw; top:10vh; }
+@media (max-width:1100px){ .lg-orb{ display:none; } }
+
+/* --- theme-scoped image visibility (.lt shows in light, .dk in dark) --- */
+.dk { display:none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lt { display:none; }
+  :root:not([data-theme="light"]) .dk { display:revert; }
+}
+:root[data-theme="dark"] .lt { display:none; }
+:root[data-theme="dark"] .dk { display:revert; }
+:root[data-theme="light"] .lt { display:revert; }
+:root[data-theme="light"] .dk { display:none; }
+
+/* ---------- glass primitives ------------------------------------- */
+.glass {
+  position:relative;
+  /* sits over a photographic backdrop, so lean on the stronger tint.
+     The corner highlight is a background layer (not ::before) so both
+     pseudo-elements stay free for the border glow and the spotlight. */
+  background-image:linear-gradient(140deg,var(--glass-highlight) 0%,transparent 38%);
+  background-color:var(--glass-bg-strong);
+  -webkit-backdrop-filter:var(--glass-blur);
+  backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--glass-box);
+  isolation:isolate;
+}
+.glass-strong { background-color:var(--glass-bg-strong); }
+
+/* ---- 5. border glow / rotating border gradient -------------------
+   A conic gradient masked down to a 1.5px ring. --pqc-ang is a
+   registered property, so the angle itself animates.                 */
+.glow-border::before {
+  content:""; position:absolute; inset:0; border-radius:inherit; padding:1.5px;
+  background:conic-gradient(from var(--pqc-ang),
+      transparent 0deg, var(--cyan-400) 45deg, var(--blue-500) 100deg,
+      var(--violet-400) 155deg, transparent 215deg, transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  opacity:var(--glow-o); transition:--glow-o .5s var(--ease-glass);
+  animation:pqcSpin 6s linear infinite;
+  pointer-events:none; z-index:3;
+}
+.glow-border:hover, .glow-border:focus-within { --glow-o:1; }
+.glow-border.always-on { --glow-o:.85; }
+@keyframes pqcSpin { to { --pqc-ang:360deg; } }
+
+/* ---- 8. spotlight ------------------------------------------------
+   A soft light that tracks the pointer across the surface; ui-kit.js
+   feeds --sx/--sy.                                                   */
+.spotlight::after {
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:radial-gradient(420px circle at var(--sx,50%) var(--sy,0%), var(--spot), transparent 45%);
+  opacity:0; transition:opacity .45s var(--ease-glass); z-index:1;
+}
+.spotlight:hover::after { opacity:1; }
+
+/* card lift + sheen on hover for cards flagged interactive */
+.glass-card {
+  transition:transform .45s var(--ease-spring-soft), box-shadow .4s var(--ease-glass),
+             border-color .4s var(--ease-glass);
+  transform-style:preserve-3d;
+}
+.glass-card:hover {
+  border-color:var(--glass-border-blue);
+  box-shadow:var(--glass-box), 0 26px 60px var(--glass-shadow), 0 0 40px var(--glow-cyan);
+}
+.glass-card .glare {
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:2;
+  background:radial-gradient(circle at var(--mx,50%) var(--my,0%),
+            var(--glass-highlight), transparent 45%);
+  opacity:0; transition:opacity .3s var(--ease-glass);
+}
+.glass-card[data-tilt]:hover .glare { opacity:.5; }
+/* children ride above the spotlight layer (.glare keeps its own stacking) */
+.glass > *:not(.glare) { position:relative; z-index:2; }
+
+/* ---------- floating / levitation ------------------------------- */
+.float   { animation:floaty 6s ease-in-out infinite; }
+.float-2 { animation:floaty 8s ease-in-out infinite; animation-delay:-2s; }
+.float-3 { animation:floaty 7s ease-in-out infinite; animation-delay:-4s; }
+@keyframes floaty { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+
+.levitate { transition:transform .45s var(--ease-glass), box-shadow .45s var(--ease-glass); }
+.levitate:hover { transform:translateY(-6px); }
+
+/* ---------- scroll reveal -------------------------------------- */
+.reveal { opacity:0; transform:translateY(26px); transition:opacity .7s var(--ease-glass), transform .7s var(--ease-glass); }
+.reveal.in { opacity:1; transform:none; }
+/* if JS never runs, don't hide content */
+html:not(.pqc-js) .reveal { opacity:1; transform:none; }
+.reveal.d1{transition-delay:.06s} .reveal.d2{transition-delay:.12s}
+.reveal.d3{transition-delay:.18s} .reveal.d4{transition-delay:.24s}
+.reveal.d5{transition-delay:.30s} .reveal.d6{transition-delay:.36s}
+
+/* ---------- 1. buttons : spring press + magnetic pull + ripple ----
+   --mag-x/--mag-y come from ui-kit.js (magnetic pull toward the cursor);
+   --lift/--press are registered properties so they spring on their own. */
+.btn {
+  position:relative; overflow:hidden; isolation:isolate;
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  padding:11px 20px; border:1px solid var(--glass-border-blue); border-radius:var(--radius-sm);
+  font:inherit; font-weight:600; font-size:14px; line-height:1;
+  color:var(--text-primary); background:var(--glass-bg-strong);
+  -webkit-backdrop-filter:blur(12px) saturate(140%); backdrop-filter:blur(12px) saturate(140%);
+  cursor:pointer; text-decoration:none; white-space:nowrap;
+  transform:translate3d(var(--mag-x,0px), calc(var(--mag-y,0px) + var(--lift)), 0) scale(var(--press));
+  transition:--lift .42s var(--ease-spring), --press .42s var(--ease-spring),
+             box-shadow .28s var(--ease-glass), background .28s var(--ease-glass),
+             border-color .28s var(--ease-glass), filter .2s;
+}
+.btn:hover  { --lift:-3px; --press:1.035;
+              box-shadow:0 12px 30px var(--glass-shadow), 0 0 24px var(--glow-blue); }
+.btn.is-pressed { --lift:0px; --press:.94; }
+.btn:focus-visible { outline:2px solid var(--border-active); outline-offset:3px; }
+.btn:disabled { opacity:.45; cursor:default; --lift:0px; --press:1; box-shadow:none; }
+/* pointer-tracked highlight inside the button (spotlight, small scale) */
+.btn::before {
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1;
+  background:radial-gradient(120px circle at var(--bx,50%) var(--by,50%), rgba(255,255,255,.30), transparent 60%);
+  opacity:0; transition:opacity .35s var(--ease-glass);
+}
+.btn:hover::before { opacity:1; }
+
+.btn-primary {
+  color:#fff; border-color:transparent;
+  background:var(--grad-primary); background-size:200% 200%;
+  box-shadow:0 10px 30px var(--glow-blue);
+  animation:btnFlow 8s ease infinite;
+}
+.btn-primary:hover { box-shadow:0 14px 40px var(--glow-blue), 0 0 34px var(--glow-cyan); filter:brightness(1.05); }
+@keyframes btnFlow { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+
+.btn-danger { color:#fff; border-color:transparent; background:linear-gradient(135deg,var(--danger),#ff8a92); box-shadow:0 10px 26px var(--danger-soft); }
+.btn-ghost  { background:transparent; border-color:var(--border-active); color:var(--text-link); }
+.btn-sm { padding:7px 13px; font-size:12.5px; border-radius:8px; }
+
+/* shimmer sweep */
+.btn::after {
+  content:""; position:absolute; top:0; left:-120%; width:60%; height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);
+  transform:skewX(-18deg); transition:none;
+}
+.btn:hover::after { animation:shimmer .9s var(--ease-glass); }
+@keyframes shimmer { to { left:130%; } }
+
+/* JS-driven ripple */
+.ripple-ink {
+  position:absolute; border-radius:50%; transform:scale(0); pointer-events:none;
+  background:radial-gradient(circle,rgba(255,255,255,.55),transparent 70%);
+  animation:rippleOut .6s var(--ease-glass) forwards; z-index:0;
+}
+@keyframes rippleOut { to { transform:scale(2.6); opacity:0; } }
+
+/* ---------- inputs ------------------------------------------- */
+input[type=text], input[type=password], input[type=search], input[type=email], select, textarea {
+  width:100%; padding:10px 13px; font:inherit; color:var(--text-primary);
+  background:var(--glass-bg-soft); border:1px solid var(--glass-border);
+  border-radius:var(--radius-sm); outline:none;
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  transition:border-color .25s var(--ease-glass), box-shadow .25s var(--ease-glass), background .25s;
+}
+input::placeholder, textarea::placeholder { color:var(--text-muted); transition:opacity .3s, transform .3s var(--ease-glass); }
+input:focus::placeholder, textarea:focus::placeholder { opacity:.5; transform:translateX(4px); }
+/* the focus ring springs open instead of appearing */
+input:focus, select:focus, textarea:focus {
+  border-color:var(--border-active);
+  --ring:4px;
+  box-shadow:0 0 0 var(--ring) var(--glow-blue), 0 0 22px var(--glow-cyan);
+  background:var(--glass-bg-strong);
+  transition:border-color .25s var(--ease-glass), --ring .4s var(--ease-spring),
+             box-shadow .25s var(--ease-glass), background .25s;
+}
+/* the label above a focused field lights up and nudges */
+label:has(+ input:focus), label:has(+ .srvrow input:focus), label:has(+ .row input:focus) {
+  color:var(--text-link); transform:translateX(3px);
+}
+label { transition:color .3s var(--ease-glass), transform .35s var(--ease-spring); }
+label { display:block; font-size:12px; font-weight:600; letter-spacing:.02em;
+        color:var(--text-secondary); margin:12px 0 5px; }
+
+/* ---------- pills / badges --------------------------------- */
+.pill { display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:999px;
+        font-size:11px; font-weight:700; letter-spacing:.03em; border:1px solid transparent;
+        transition:transform .35s var(--ease-spring), box-shadow .3s var(--ease-glass); }
+.pill:hover { transform:scale(1.09); box-shadow:0 4px 14px currentColor; }
+.pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor;
+                box-shadow:0 0 8px currentColor; animation:pulseDot 2.4s ease-in-out infinite; }
+.pill.active,.pill.issued   { color:var(--success); background:var(--success-soft); border-color:color-mix(in srgb,var(--success) 40%,transparent); }
+.pill.pending,.pill.submitted { color:var(--warning); background:var(--warning-soft); border-color:color-mix(in srgb,var(--warning) 40%,transparent); }
+.pill.approved { color:var(--info); background:var(--info-soft); border-color:color-mix(in srgb,var(--info) 40%,transparent); }
+.pill.disabled,.pill.revoked { color:var(--danger); background:var(--danger-soft); border-color:color-mix(in srgb,var(--danger) 40%,transparent); }
+
+.badge { display:inline-flex; align-items:center; gap:8px; padding:8px 20px; border-radius:999px;
+         font-weight:800; letter-spacing:.06em; font-size:14px; border:1px solid transparent;
+         -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+.badge::before { content:""; width:9px; height:9px; border-radius:50%; background:currentColor; box-shadow:0 0 12px currentColor; animation:pulseDot 1.8s ease-in-out infinite; }
+.badge.ok   { color:var(--success); background:var(--success-soft); border-color:color-mix(in srgb,var(--success) 45%,transparent); }
+.badge.bad  { color:var(--danger);  background:var(--danger-soft);  border-color:color-mix(in srgb,var(--danger) 45%,transparent); }
+.badge.warn { color:var(--warning); background:var(--warning-soft); border-color:color-mix(in srgb,var(--warning) 45%,transparent); }
+@keyframes pulseDot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:.5} }
+
+/* ---------- tables ---------------------------------------- */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th,td { text-align:left; padding:11px 10px; border-bottom:1px solid var(--glass-border); vertical-align:top; }
+th { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); font-weight:700; }
+tbody tr { transition:background .25s var(--ease-glass), box-shadow .3s var(--ease-glass); }
+tbody tr:hover { background:var(--glass-bg-soft); box-shadow:inset 3px 0 0 var(--blue-500); }
+/* freshly rendered rows cascade in */
+tbody tr { animation:rowIn .5s var(--ease-glass) both; }
+tbody tr:nth-child(1){animation-delay:.02s} tbody tr:nth-child(2){animation-delay:.05s}
+tbody tr:nth-child(3){animation-delay:.08s} tbody tr:nth-child(4){animation-delay:.11s}
+tbody tr:nth-child(5){animation-delay:.14s} tbody tr:nth-child(6){animation-delay:.17s}
+tbody tr:nth-child(7){animation-delay:.20s} tbody tr:nth-child(8){animation-delay:.23s}
+tbody tr:nth-child(n+9){animation-delay:.26s}
+@keyframes rowIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+.mono, code { font-family:ui-monospace,SFMono-Regular,Menlo,"Cascadia Code",monospace; font-size:12px; }
+
+/* ---------- misc helpers -------------------------------- */
+.muted { color:var(--text-muted); font-size:12.5px; }
+.bad   { color:var(--danger); font-weight:600; }
+.row   { display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+.hidden{ display:none !important; }
+.grad-text {
+  background:var(--grad-primary); -webkit-background-clip:text; background-clip:text;
+  color:transparent; background-size:200% 200%; animation:btnFlow 10s ease infinite;
+}
+
+/* ---------- toast --------------------------------------- */
+.pqc-toast {
+  position:fixed; left:50%; bottom:26px; transform:translate(-50%,20px);
+  max-width:90%; padding:13px 20px; border-radius:var(--radius-md);
+  background:var(--glass-bg-strong); color:var(--text-primary);
+  border:1px solid var(--glass-border-blue);
+  -webkit-backdrop-filter:var(--glass-blur); backdrop-filter:var(--glass-blur);
+  box-shadow:0 18px 50px var(--shadow-lg), 0 0 30px var(--glow-blue);
+  opacity:0; pointer-events:none; white-space:pre-wrap; z-index:9999;
+  transition:opacity .35s var(--ease-glass), transform .35s var(--ease-glass);
+}
+.pqc-toast.show { opacity:1; transform:translate(-50%,0) scale(1);
+                  transition:opacity .3s var(--ease-glass), transform .55s var(--ease-spring); }
+.pqc-toast.err  { border-color:var(--danger); box-shadow:0 18px 50px var(--danger-soft), 0 0 30px var(--danger-soft); }
+.pqc-toast.ok   { border-color:var(--success); box-shadow:0 18px 50px var(--success-soft), 0 0 30px var(--success-soft); }
+
+/* ---------- theme toggle ------------------------------- */
+.theme-toggle {
+  --sz:40px;
+  width:var(--sz); height:var(--sz); flex:0 0 var(--sz);
+  display:grid; place-items:center; border-radius:50%;
+  border:1px solid var(--glass-border); background:var(--glass-bg);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  color:var(--text-secondary); cursor:pointer; overflow:hidden;
+  transition:transform .55s var(--ease-spring), box-shadow .3s, color .3s, border-color .3s;
+}
+.theme-toggle:hover { transform:rotate(25deg) scale(1.12); color:var(--blue-500); border-color:var(--border-active); box-shadow:0 0 24px var(--glow-cyan); }
+.theme-toggle:active { transform:rotate(180deg) scale(.9); }
+.theme-toggle svg { width:20px; height:20px; transition:transform .5s var(--ease-spring), opacity .3s;
+                    animation:popIn .5s var(--ease-spring) both; }
+.theme-toggle .i-sun   { display:none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .theme-toggle .i-moon{display:none} :root:not([data-theme="light"]) .theme-toggle .i-sun{display:block} }
+:root[data-theme="dark"] .theme-toggle .i-moon { display:none; }
+:root[data-theme="dark"] .theme-toggle .i-sun  { display:block; }
+:root[data-theme="light"] .theme-toggle .i-sun { display:none; }
+:root[data-theme="light"] .theme-toggle .i-moon{ display:block; }
+
+/* ---------- brand mark (logo PNG from Assets/) -------- */
+.brand { display:inline-flex; align-items:center; gap:11px; font-weight:800; letter-spacing:-.01em;
+         color:var(--text-primary); text-decoration:none; font-size:19px; }
+/* the logo art already contains the "PQC PDF Sign" wordmark */
+.brand .mark { height:48px; width:auto; flex:0 0 auto;
+               filter:drop-shadow(0 6px 18px var(--glow-blue)); }
+.brand b { color:var(--blue-500); }
+
+/* ---------- entrance animations ----------------------- */
+@keyframes fadeUp   { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+@keyframes fadeDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:none} }
+@keyframes slideInL { from{opacity:0;transform:translateX(-40px)} to{opacity:1;transform:none} }
+@keyframes slideInR { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:none} }
+@keyframes popIn    { from{opacity:0;transform:scale(.9)} to{opacity:1;transform:none} }
+.anim-fade-up  { animation:fadeUp   .8s var(--ease-spring-soft) both; }
+.anim-fade-down{ animation:fadeDown .7s var(--ease-spring-soft) both; }
+.anim-slide-l  { animation:slideInL .8s var(--ease-spring-soft) both; }
+.anim-slide-r  { animation:slideInR .8s var(--ease-spring-soft) both; }
+.anim-pop      { animation:popIn    .6s var(--ease-spring) both; }
+.stg-1{animation-delay:.05s}.stg-2{animation-delay:.13s}.stg-3{animation-delay:.21s}
+.stg-4{animation-delay:.29s}.stg-5{animation-delay:.37s}.stg-6{animation-delay:.45s}
+
+/* ---------- 8b. cursor aura (global spotlight) --------- */
+.lg-aura {
+  position:fixed; left:0; top:0; width:420px; height:420px; border-radius:50%;
+  pointer-events:none; z-index:0; opacity:0; will-change:transform;
+  background:radial-gradient(circle, var(--aura) 0%, transparent 62%);
+  mix-blend-mode:var(--aura-blend); filter:blur(26px);
+  transition:opacity .6s var(--ease-glass);
+}
+.lg-aura.on { opacity:var(--aura-opacity); }
+
+/* ---------- 2. page + shared-element transition --------
+   Elements carrying a view-transition-name are matched across the two
+   states and morphed (position, size, opacity) — the "shared element".
+   Browsers without the API simply skip all of this.                    */
+::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode:normal; }
+
+:root[data-vt="view"]::view-transition-old(root) {
+  animation:vtOut .26s cubic-bezier(.4,0,1,1) both;
+}
+:root[data-vt="view"]::view-transition-new(root) {
+  animation:vtIn .46s var(--ease-spring-soft) both;
+}
+@keyframes vtOut { to { opacity:0; transform:translateY(-10px) scale(.985); } }
+@keyframes vtIn  { from { opacity:0; transform:translateY(16px) scale(.99); } }
+
+/* theme swap: a soft cross-dissolve instead of a hard repaint */
+:root[data-vt="theme"]::view-transition-old(root) { animation:vtFade .5s ease both; }
+:root[data-vt="theme"]::view-transition-new(root) { animation:vtFade .5s ease reverse both; }
+@keyframes vtFade { from { opacity:1; } to { opacity:0; } }
+
+/* shared elements: the sidebar accent slides between menu items and the
+   panel frame morphs, instead of both cross-fading */
+.nav-item.active::before { view-transition-name:nav-accent; }
+.view.active             { view-transition-name:main-panel; }
+::view-transition-group(nav-accent) { animation-duration:.42s; animation-timing-function:var(--ease-spring); }
+::view-transition-group(main-panel) { animation-duration:.42s; animation-timing-function:var(--ease-spring-soft); }
+
+/* ---------- reduced motion --------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.001s !important; animation-iteration-count:1 !important;
+                           transition-duration:.001s !important; scroll-behavior:auto !important; }
+  .float, .float-2, .float-3, .lg-orb, .lg-mesh, .glow-border::before { animation:none !important; }
+  .reveal { opacity:1 !important; transform:none !important; }
+  .lg-aura, #lg-flow { display:none !important; }
+  tbody tr { animation:none !important; }
+}

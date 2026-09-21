@@ -1,0 +1,86 @@
+# PQC PDF Sign V1 — lab server (Rencana V1 §22).
+# Only Caddy is reachable from the host; postgres and minio stay on the
+# internal network (§22.3). There is no signing worker and no volume that
+# would hold a user private key.
+#
+#   1) generate the CA:   ../../dist/ca-admin init --dir ./ca
+#      then copy ./ca/public/{root-ca.crt.pem,ca-chain.pem,crl.pem} into ./pki/
+#   2) cp .env.lab.example .env.lab   and edit the secrets
+#   3) docker compose --env-file .env.lab -f docker-compose.yml up -d --build
+
+name: pqc-pdf-sign-lab
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pqc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-pqc}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pqc}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/lab/Dockerfile
+    environment:
+      PQC_ADDR: ":8080"
+      PQC_DATABASE_URL: "postgres://${POSTGRES_USER:-pqc}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pqc}?sslmode=disable"
+      PQC_S3_ENDPOINT: "minio:9000"
+      PQC_S3_BUCKET: "${PQC_S3_BUCKET:-pqc-pdf-sign}"
+      PQC_S3_ACCESS_KEY: "${MINIO_ROOT_USER}"
+      PQC_S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
+      PQC_S3_USE_SSL: "false"
+      PQC_JWT_SECRET: "${PQC_JWT_SECRET:?set PQC_JWT_SECRET}"
+      PQC_ROOT_CA_PEM: "/pki/root-ca.crt.pem"
+      PQC_CA_CHAIN_PEM: "/pki/ca-chain.pem"
+      PQC_CRL_PEM: "/pki/crl.pem"
+      PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-https://localhost:8443}"
+    volumes:
+      - ./pki:/pki:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [api]
+    networks: [internal]
+
+volumes:
+  pgdata:
+  miniodata:
+  caddydata:
+  caddyconfig:
+
+networks:
+  internal:

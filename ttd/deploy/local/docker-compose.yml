@@ -1,0 +1,67 @@
+# PostgreSQL + the receiver API. Signed-PDF blobs live in the `objects` table
+# (no MinIO). Everything persists in named volumes:
+#   pgdata  -> accounts, devices, certificates, signatures, audit
+#   cadata  -> the lab CA keys + revocation ledger
+# `docker compose up -d --build`  rebuilds the image, keeps the data.
+# `docker compose down`           stops containers, keeps the data.
+# `docker compose down -v`        ALSO deletes the data (fresh start).
+#
+# Config comes from a `.env` file next to this one (see .env.example). The
+# important one is PQC_PUBLIC_BASE_URL — the QR codes point there and it is
+# the default server address the apps use. On a VPS set it to the public IP:
+#   PQC_PUBLIC_BASE_URL=http://136.244.116.132:8099
+
+name: pqc-pdf-sign
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pqc
+      POSTGRES_PASSWORD: "${PQC_DB_PASSWORD:-pqc}"
+      POSTGRES_DB: pqc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pqc"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile
+    environment:
+      PQC_DATABASE_URL: "postgres://pqc:${PQC_DB_PASSWORD:-pqc}@postgres:5432/pqc?sslmode=disable"
+      PQC_JWT_SECRET: "${PQC_JWT_SECRET:-local-prototype-secret-change-me-0123456789}"
+      PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-http://136.244.116.132:8099}"
+      # First boot bootstraps ONE super admin (creates/disables admins). Leave
+      # the password empty in real deploys — the server generates one and
+      # prints it to the log once. The lab uses a fixed one so seed.sh can log in.
+      PQC_SUPERADMIN_USERNAME: "${PQC_SUPERADMIN_USERNAME:-superadmin}"
+      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+      # Large documents (docs/large-files.md). Signed PDFs go to a disk volume
+      # instead of Postgres bytea. Tiers by size: <=STAMP -> server QR stamp;
+      # <=VERIFY -> strict re-verify on submit; larger -> store-only (hash
+      # recorded, not verified). Resumable chunk uploads land in UPLOAD_DIR.
+      PQC_OBJECT_DIR: /objects
+      PQC_UPLOAD_DIR: /objects/_incoming
+      PQC_MAX_UPLOAD_MB: "${PQC_MAX_UPLOAD_MB:-1024}"
+      PQC_MAX_STAMP_MB: "${PQC_MAX_STAMP_MB:-150}"
+      PQC_MAX_VERIFY_MB: "${PQC_MAX_VERIFY_MB:-350}"
+    volumes:
+      - cadata:/ca
+      - objdata:/objects
+    ports:
+      - "8099:8099"   # full API (register / login / sign / admin)
+      - "8098:8098"   # verification-only site — no login, verify + QR pages only
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  cadata:
+  objdata:   # signed PDFs + resumable-upload scratch (docs/large-files.md)

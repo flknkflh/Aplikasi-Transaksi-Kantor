@@ -1,0 +1,27 @@
+# Lab reverse proxy (Rencana V1 §22, §24). Uses Caddy's internal CA for a
+# self-signed HTTPS cert — this is the TLS CA, entirely separate from the PDF
+# signing Root CA (§22.2).
+
+{
+	auto_https disable_redirects
+}
+
+:8443 {
+	tls internal
+
+	# Upload limit (§24): V1 accepts PDFs up to 25 MiB.
+	request_body {
+		max_size 25MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy api:8080
+}

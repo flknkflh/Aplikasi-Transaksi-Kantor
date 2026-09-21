@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS audit_events;
+DROP TABLE IF EXISTS objects;
+DROP TABLE IF EXISTS signatures;
+DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS certificates;
+DROP TABLE IF EXISTS enrollments;
+DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS accounts;
