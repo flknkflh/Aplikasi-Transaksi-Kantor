@@ -24,7 +24,7 @@ const PORT = Number(process.env.E2E_PORT || 18199);
 // Docker one, seeded with superadmin/superadmin12345) instead of starting its own server.
 const EXTERNAL = process.env.E2E_EXTERNAL;
 const BASE = EXTERNAL || `http://127.0.0.1:${PORT}`;
-const SU_PASS = process.env.E2E_SU_PASS || (EXTERNAL ? 'superadmin12345' : 'e2e-superadmin-12345');
+const SU_PASS = process.env.E2E_SU_PASS || (EXTERNAL ? 'admin12345' : 'e2e-admin-12345'); // the bootstrap ADMIN (admin@local)
 const sample = path.join(ttd, 'tests', 'fixtures', 'sample.pdf');
 
 const CHROME = process.env.CHROME_PATH || [
@@ -67,7 +67,7 @@ async function startServer() {
   ], {
     env: {
       ...process.env, PQC_JWT_SECRET: 'e2e-secret-0123456789', PQC_RATE_LIMIT_DISABLED: '1',
-      PQC_SUPERADMIN_PASSWORD: SU_PASS, PQC_WEB_DIR: webDir,
+      PQC_BOOTSTRAP_ADMIN_EMAIL: 'admin@local', PQC_BOOTSTRAP_ADMIN_PASSWORD: SU_PASS, PQC_WEB_DIR: webDir,
       PQC_DEV_LAB_CA_ADMIN: path.join(work, 'ca-admin' + exe), PQC_DEV_LAB_CA_DIR: path.join(work, 'ca'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -135,7 +135,7 @@ try {
 
   // ---- admin setup (out-of-band, like the admin console) ----
   section('setup');
-  const su = (await login('superadmin', SU_PASS)).data.access_token;
+  const su = (await login('admin@local', SU_PASS)).data.access_token;
   check('super admin can log in', !!su);
   const csp = await fetch(BASE + '/app/');
   check('/app/ is served with a strict CSP', /script-src 'self' 'wasm-unsafe-eval'/.test(csp.headers.get('content-security-policy') || ''));

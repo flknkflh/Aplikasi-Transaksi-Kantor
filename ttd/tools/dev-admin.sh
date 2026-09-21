@@ -34,10 +34,7 @@ login() { # email pass -> access_token
 }
 
 echo ">> provisioning at $BASE"
-# Admins can only be created by the super admin (dev-up.sh sets its password).
-SU=$(login superadmin dev-superadmin-12345 || true)
-[ -n "$SU" ] || { echo "!! super admin login failed (was the receiver started by tools/dev-up.sh?)"; exit 1; }
-curl -sS -X POST "$BASE/api/v1/admin/admins" -H "Authorization: Bearer $SU" -H 'Content-Type: application/json'   -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
+# admin@local is the bootstrap admin dev-up.sh creates (real deployments create admins from /superadmin).
 ADM=$(login admin@local admin12345 || true)
 [ -n "$ADM" ] || { echo "!! admin login failed"; exit 1; }
 echo "   admin@local ready"

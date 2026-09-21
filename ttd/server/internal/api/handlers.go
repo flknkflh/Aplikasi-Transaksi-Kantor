@@ -82,6 +82,14 @@ func (s *Server) hLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The super admin signs in through its own page and mechanism (superadmin.go). Only
+	// reached with the right password, so this does not reveal which names exist.
+	if a.Role == store.RoleSuperAdmin {
+		s.st.Append(store.AuditEvent{Type: "auth.login", AccountID: a.ID, Result: "fail", Detail: "superadmin-wrong-page"})
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "akun ini masuk lewat halaman khusus super admin (/superadmin)", "superadmin_login": true})
+		return
+	}
+
 	// Account lifecycle gate (Rencana RB-1): only an admin-approved account
 	// may obtain a session.
 	switch a.Status {

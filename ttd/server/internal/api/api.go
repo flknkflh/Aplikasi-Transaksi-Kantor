@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -49,7 +48,14 @@ type Config struct {
 	// is used verbatim when set; otherwise a random one is generated and
 	// logged once. Leaving Username empty (tests) skips the bootstrap.
 	SuperAdminUsername string
-	SuperAdminPassword string
+	SuperAdminPassword string // initial password only; the first login must replace it
+	// SuperAdminSessionTTL is the super-admin session length (default 15 min).
+	SuperAdminSessionTTL time.Duration
+
+	// BootstrapAdminEmail/Password (seed/dev only) create a first ordinary admin when
+	// the database has none, so a demo stack works without the super-admin ceremony.
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
 
 	// RateLimits are per-minute caps. nil applies sane defaults; pass
 	// &RateLimits{} to disable every bucket (tests do this).
@@ -101,6 +107,8 @@ type Store interface {
 	UpdateAccountProfile(id, fullName, org string) error
 	SetAccountPassword(id, passwordHash string) error
 	DeleteAccount(id string) error
+	SuperSecurity(accountID string) (store.SuperSecurity, error)
+	PutSuperSecurity(store.SuperSecurity) error
 
 	CreateDevice(store.Device) (store.Device, error)
 	Device(string) (store.Device, error)
@@ -137,12 +145,15 @@ type Store interface {
 }
 
 type Server struct {
-	st      Store
-	signer  *auth.Signer
-	cfg     Config
-	crl     []byte // mutable copy of cfg.CRLPEM
-	issuer  string
-	uploads *uploadManager
+	st     Store
+	signer *auth.Signer
+	// The super admin logs in through a separate mechanism whose tokens use their own
+	// keys (superadmin.go): a step token (password ok, code pending) and the session token.
+	saStep, saAccess *auth.Signer
+	cfg              Config
+	crl              []byte // mutable copy of cfg.CRLPEM
+	issuer           string
+	uploads          *uploadManager
 
 	rlLogin, rlReserve, rlSubmit, rlVerify *limiterSet
 }
@@ -201,44 +212,10 @@ func New(st Store, cfg Config) (*Server, error) {
 		rlSubmit:  mk(rl.SubmitPerAccount),
 		rlVerify:  mk(rl.VerifyPerIP),
 	}
+	s.initSuperAdminSigners()
 	s.ensureSuperAdmin()
+	s.ensureBootstrapAdmin()
 	return s, nil
-}
-
-// ensureSuperAdmin bootstraps the single super-admin the first time the server
-// runs against an empty database (Rencana: account management). It is a no-op
-// once a superadmin row exists, and when cfg.SuperAdminUsername is empty.
-func (s *Server) ensureSuperAdmin() {
-	u := strings.TrimSpace(s.cfg.SuperAdminUsername)
-	if u == "" {
-		return
-	}
-	for _, a := range s.st.ListAccounts() {
-		if a.Role == store.RoleSuperAdmin {
-			return // already bootstrapped
-		}
-	}
-	pw, generated := s.cfg.SuperAdminPassword, false
-	if len(pw) < 8 {
-		pw, generated = randToken(15), true
-	}
-	hash, err := auth.HashPassword(pw)
-	if err != nil {
-		log.Printf("api: super-admin bootstrap failed (hash): %v", err)
-		return
-	}
-	if _, err := s.st.CreateAccount(store.Account{
-		Email: u, DisplayName: u, Role: store.RoleSuperAdmin, Status: store.AccountActive,
-		PasswordHash: hash,
-	}); err != nil {
-		log.Printf("api: super-admin bootstrap failed: %v", err)
-		return
-	}
-	if generated {
-		log.Printf("api: SUPER ADMIN created — username %q  password %q  (shown once — change it after first login)", u, pw)
-	} else {
-		log.Printf("api: SUPER ADMIN created — username %q (password from PQC_SUPERADMIN_PASSWORD)", u)
-	}
 }
 
 // randToken returns an unpadded base64url string with n bytes of entropy.
@@ -285,10 +262,8 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/admin/capabilities", s.admin(s.hCapabilities))
 
-	mux.HandleFunc("GET /api/v1/admin/admins", s.superadmin(s.hListAdmins))
-	mux.HandleFunc("POST /api/v1/admin/admins", s.superadmin(s.hCreateAdmin))
-	mux.HandleFunc("PATCH /api/v1/admin/admins/{id}", s.superadmin(s.hUpdateAdmin))
-	mux.HandleFunc("DELETE /api/v1/admin/admins/{id}", s.superadmin(s.hDeleteAdmin))
+	// Admin accounts are managed ONLY through the separate super-admin login (superadmin.go).
+	s.mountSuperAdmin(mux)
 
 	mux.HandleFunc("GET /api/v1/admin/accounts", s.admin(s.hListAccounts))
 	mux.HandleFunc("POST /api/v1/admin/accounts/{id}/approve", s.admin(s.hApproveAccount))
@@ -341,9 +316,6 @@ const claimsKey ctxKey = 0
 
 func (s *Server) user(h http.HandlerFunc) http.HandlerFunc  { return s.authed(store.RoleUser, h) }
 func (s *Server) admin(h http.HandlerFunc) http.HandlerFunc { return s.authed(store.RoleAdmin, h) }
-func (s *Server) superadmin(h http.HandlerFunc) http.HandlerFunc {
-	return s.authed(store.RoleSuperAdmin, h)
-}
 
 func (s *Server) authed(minRole string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -357,18 +329,11 @@ func (s *Server) authed(minRole string, h http.HandlerFunc) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
-		switch minRole {
-		case store.RoleAdmin:
-			// a super admin has every admin capability
-			if c.Role != store.RoleAdmin && c.Role != store.RoleSuperAdmin {
-				writeErr(w, http.StatusForbidden, "admin only")
-				return
-			}
-		case store.RoleSuperAdmin:
-			if c.Role != store.RoleSuperAdmin {
-				writeErr(w, http.StatusForbidden, "super admin only")
-				return
-			}
+		// The super admin has a separate login and separate tokens (superadmin.go), so a
+		// token that parses here is never one of theirs. Admin routes want an admin exactly.
+		if minRole == store.RoleAdmin && c.Role != store.RoleAdmin {
+			writeErr(w, http.StatusForbidden, "admin only")
+			return
 		}
 		h(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
 	}

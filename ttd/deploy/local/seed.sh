@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Seed the running local stack:
-#   superadmin / superadmin12345   -> /admin console, manages admins
+#   super admin: automatic at first start, random password in the log; login at /superadmin
 #   admin@local / admin12345       -> /admin console (created by the super admin)
 #   user@local  / user12345        -> the browser app (/app/) (already approved)
 # Idempotent. Data is persistent, so you normally run this once per fresh volume.
@@ -8,8 +8,8 @@
 #   deploy/local/seed.sh [base-url]
 set -euo pipefail
 BASE="${1:-http://localhost:18099}"; BASE="${BASE%/}"
-SU_USER="${PQC_SUPERADMIN_USERNAME:-superadmin}"
-SU_PASS="${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+SU_USER="${BOOTSTRAP_ADMIN_EMAIL:-admin@local}"   # the demo bootstrap admin (ordinary admin)
+SU_PASS="${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}"
 jval() { sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1; }
 
 curl -fsS "$BASE/api/v1/public/ca/root.crt" >/dev/null || { echo "!! no API at $BASE — run 'docker compose up -d' first"; exit 1; }
@@ -20,10 +20,6 @@ SU=$(curl -fsS -X POST "$BASE/api/v1/auth/login" -d "{\"email\":\"$SU_USER\",\"p
 [ -n "$SU" ] || { echo "!! super-admin login failed — check PQC_SUPERADMIN_PASSWORD (server logs the generated one on first boot)"; exit 1; }
 echo ">> $SU_USER ready"
 
-# One demo admin, created by the super admin (admins can no longer self-register).
-curl -sS -X POST "$BASE/api/v1/admin/admins" -H "Authorization: Bearer $SU" -H 'Content-Type: application/json' \
-  -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
-echo ">> admin@local ready"
 
 # One end user for the app; self-registers pending, the super admin approves.
 UID_=$(curl -sS -X POST "$BASE/api/v1/auth/register" -H 'Content-Type: application/json' \

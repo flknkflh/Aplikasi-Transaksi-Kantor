@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Demo data for the archive app (idempotent):
-#   superadmin / superadmin12345     central admin (archive console + /admin)
-#   admin@local / admin12345         central admin
+#   admin@local / admin12345         central admin (bootstrap admin from the compose env — demo only)
+#   super admin: created automatically at first start (random password in the ttd log); login at /superadmin
 #   office "Kantor Cabang A":  pengirim.a@local / pengirim12345
 #   office "Kantor Cabang B":  pengirim.b@local / pengirim12345
 #   baru@local / pengirim12345       approved but NOT assigned to an office yet
@@ -9,20 +9,18 @@
 #   deploy/office/seed.sh [base-url]
 set -euo pipefail
 BASE="${1:-http://localhost:18099}"; BASE="${BASE%/}"
-SU_USER="${PQC_SUPERADMIN_USERNAME:-superadmin}"
-SU_PASS="${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+ADMIN_USER="${BOOTSTRAP_ADMIN_EMAIL:-admin@local}"
+ADMIN_PASS="${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}"
 jval() { sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1; }
 
 for i in $(seq 1 60); do curl -fsS "$BASE/api/v1/public/ca/root.crt" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$BASE/api/v1/public/ca/root.crt" >/dev/null || { echo "!! no server at $BASE — run 'docker compose up -d --build' first"; exit 1; }
 
 login() { curl -fsS -X POST "$BASE/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" | jval access_token; }
-SU=$(login "$SU_USER" "$SU_PASS") || { echo "!! super-admin login failed"; exit 1; }
-echo ">> $SU_USER ready"
+SU=$(login "$ADMIN_USER" "$ADMIN_PASS") || { echo "!! admin login failed — was the stack started with the demo BOOTSTRAP_ADMIN_* values?"; exit 1; }
+echo ">> $ADMIN_USER ready"
 AUTH=(-H "Authorization: Bearer $SU" -H 'Content-Type: application/json')
 
-curl -sS -X POST "$BASE/api/v1/admin/admins" "${AUTH[@]}" -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
-echo ">> admin@local ready"
 
 # offices (create returns the slug id; a duplicate answers 409, then the id is the slug of the name)
 office() { # name -> id
@@ -58,8 +56,9 @@ cat <<EOT
      pengirim.a@local / pengirim12345   (Kantor Cabang A — hanya bisa mengirim)
      pengirim.b@local / pengirim12345   (Kantor Cabang B)
      baru@local       / pengirim12345   (disetujui, BELUM ditetapkan ke kantor)
-  Admin pusat    : login di $BASE/app/ dengan  admin@local / admin12345  atau  $SU_USER / $SU_PASS
+  Admin pusat    : login di $BASE/app/ dengan  $ADMIN_USER / $ADMIN_PASS
                    (lihat semua kiriman, verifikasi, unduh, atur kantor & pengguna)
-  Konsol akun    : $BASE/admin   (setujui akun baru)
+  Konsol akun    : $BASE/admin   (setujui akun baru; login admin yang sama)
+  Super admin    : $BASE/superadmin/  — sandi awal ada di log:  docker compose logs ttd | grep "SUPER ADMIN"
   Cek bukti      : ${PQC_VERIFY_URL:-http://localhost:18098}   atau tab "Cek bukti" di aplikasi
 EOT

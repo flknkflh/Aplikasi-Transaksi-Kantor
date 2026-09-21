@@ -23,6 +23,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"example.internal/pqc-pdf-sign/server/internal/api"
+	"example.internal/pqc-pdf-sign/server/internal/auth"
 	"example.internal/pqc-pdf-sign/server/internal/store"
 )
 
@@ -57,8 +58,9 @@ type env struct {
 	t      *testing.T
 	h      http.Handler
 	inter  *labpki.CA
-	su     string // bootstrap super-admin token
-	badmin string // alias of su — satisfies every admin route, approves pending users
+	su     string // super-admin session token (separate login: password + TOTP); manages admins ONLY
+	saStep int64  // TOTP step used by superAdminSetup (the next accepted code must be a later one)
+	badmin string // ordinary admin token (bootstrap admin) — approves users, runs the admin console
 }
 
 func newEnv(t *testing.T) *env { return newEnvWith(t, nil) }
@@ -76,14 +78,16 @@ func newEnvWith(t *testing.T, tweak func(*api.Config)) *env {
 		t.Fatal(err)
 	}
 	cfg := api.Config{
-		RootCAPEM:          labpki.CertPEM(root.Cert),
-		CAChainPEM:         labpki.ChainPEM(inter.Cert, root.Cert),
-		JWTSecret:          []byte("test-secret-0123456789"),
-		PublicBaseURL:      "https://verify.test",
-		RateLimits:         &api.RateLimits{}, // off; TestRateLimit sets its own
-		SuperAdminUsername: "_su@test",
-		SuperAdminPassword: "password123",
-		UploadDir:          t.TempDir(),
+		RootCAPEM:              labpki.CertPEM(root.Cert),
+		CAChainPEM:             labpki.ChainPEM(inter.Cert, root.Cert),
+		JWTSecret:              []byte("test-secret-0123456789"),
+		PublicBaseURL:          "https://verify.test",
+		RateLimits:             &api.RateLimits{}, // off; TestRateLimit sets its own
+		SuperAdminUsername:     "_su@test",
+		SuperAdminPassword:     "initial-password-1",
+		BootstrapAdminEmail:    "_admin@test",
+		BootstrapAdminPassword: "password123",
+		UploadDir:              t.TempDir(),
 	}
 	if tweak != nil {
 		tweak(&cfg)
@@ -93,10 +97,13 @@ func newEnvWith(t *testing.T, tweak func(*api.Config)) *env {
 		t.Fatal(err)
 	}
 	e := &env{t: t, h: srv.Routes(), inter: inter}
-	// The super admin is bootstrapped by api.New. It creates every admin and
-	// approves every pending user in these tests.
-	e.su = e.login("_su@test")
-	e.badmin = e.su
+	// The super admin is bootstrapped by api.New and logs in through its own mechanism
+	// (first-login ceremony: new password + authenticator). It creates the admins in these
+	// tests; the bootstrap admin approves pending users.
+	if cfg.SuperAdminUsername == "_su@test" { // tests that rename it run the ceremony themselves
+		e.su, _ = e.superAdminSetup("_su@test", "initial-password-1", "a-much-longer-superadmin-password")
+	}
+	e.badmin = e.login("_admin@test")
 	return e
 }
 
@@ -106,7 +113,7 @@ func newEnvWith(t *testing.T, tweak func(*api.Config)) *env {
 func (e *env) register(email, role string) string {
 	e.t.Helper()
 	if role == store.RoleAdmin || role == store.RoleSuperAdmin {
-		mustCode(e.t, e.do("POST", "/api/v1/admin/admins", e.su, map[string]string{
+		mustCode(e.t, e.do("POST", "/api/v1/superadmin/admins", e.su, map[string]string{
 			"username": email, "password": "password123",
 		}), http.StatusCreated)
 		return e.login(email)
@@ -117,7 +124,7 @@ func (e *env) register(email, role string) string {
 	mustCode(e.t, w, http.StatusCreated)
 	if b := jbody(e.t, w); b["status"] == store.AccountPending {
 		id := b["account_id"].(string)
-		mustCode(e.t, e.do("POST", "/api/v1/admin/accounts/"+id+"/approve", e.su, nil), http.StatusOK)
+		mustCode(e.t, e.do("POST", "/api/v1/admin/accounts/"+id+"/approve", e.badmin, nil), http.StatusOK)
 	}
 	return e.login(email)
 }
@@ -165,8 +172,8 @@ func (e *env) account(email, role string) string {
 	return e.register(email, role)
 }
 
-// adminTok returns the bootstrap super-admin token created by newEnv (it
-// satisfies every admin route).
+// adminTok returns the bootstrap ADMIN token created by newEnv (it satisfies every
+// admin route; the super admin cannot use those routes at all).
 func (e *env) adminTok() string { return e.badmin }
 
 func (e *env) login(email string) string {
@@ -174,6 +181,27 @@ func (e *env) login(email string) string {
 	w := e.do("POST", "/api/v1/auth/login", "", map[string]string{"email": email, "password": "password123"})
 	mustCode(e.t, w, http.StatusOK)
 	return jbody(e.t, w)["access_token"].(string)
+}
+
+// superAdminSetup performs the first-login ceremony of the super admin through the
+// real endpoints and returns the session token and the TOTP secret.
+func (e *env) superAdminSetup(user, initialPW, newPW string) (token, secret string) {
+	e.t.Helper()
+	w := e.do("POST", "/api/v1/superadmin/login", "", map[string]string{"username": user, "password": initialPW})
+	mustCode(e.t, w, http.StatusOK)
+	lb := jbody(e.t, w)
+	if lb["step"] != "setup" || lb["must_change"] != true {
+		e.t.Fatalf("first login must demand setup: %v", lb)
+	}
+	ch := lb["challenge"].(string)
+	w = e.do("POST", "/api/v1/superadmin/setup/begin", "", map[string]string{"challenge": ch, "new_password": newPW})
+	mustCode(e.t, w, http.StatusOK)
+	secret = jbody(e.t, w)["secret"].(string)
+	e.saStep = auth.TOTPStep(time.Now())
+	code, _ := auth.TOTPCodeAt(secret, e.saStep)
+	w = e.do("POST", "/api/v1/superadmin/setup/confirm", "", map[string]string{"challenge": ch, "code": code})
+	mustCode(e.t, w, http.StatusOK)
+	return jbody(e.t, w)["access_token"].(string), secret
 }
 
 type device struct {

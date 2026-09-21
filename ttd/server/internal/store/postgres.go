@@ -181,6 +181,35 @@ func (p *Postgres) DeleteAccount(id string) error {
 	return affected(p.db.Exec(`DELETE FROM accounts WHERE id=$1`, id))
 }
 
+// --- super-admin security ---
+
+func (p *Postgres) SuperSecurity(id string) (SuperSecurity, error) {
+	var s SuperSecurity
+	var locked sql.NullTime
+	err := p.db.QueryRow(`SELECT account_id,totp_secret,totp_enabled,must_change,last_step,failed_count,locked_until
+		FROM superadmin_security WHERE account_id=$1`, id).
+		Scan(&s.AccountID, &s.TOTPSecret, &s.TOTPEnabled, &s.MustChange, &s.LastStep, &s.FailedCount, &locked)
+	if locked.Valid {
+		s.LockedUntil = locked.Time
+	}
+	return s, norm(err)
+}
+
+func (p *Postgres) PutSuperSecurity(s SuperSecurity) error {
+	var locked any
+	if !s.LockedUntil.IsZero() {
+		locked = s.LockedUntil
+	}
+	if s.TOTPSecret == nil {
+		s.TOTPSecret = []byte{} // the column is NOT NULL: "no secret yet" is an empty value, not NULL
+	}
+	_, err := p.db.Exec(`INSERT INTO superadmin_security(account_id,totp_secret,totp_enabled,must_change,last_step,failed_count,locked_until,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,now())
+		ON CONFLICT (account_id) DO UPDATE SET totp_secret=$2,totp_enabled=$3,must_change=$4,last_step=$5,failed_count=$6,locked_until=$7,updated_at=now()`,
+		s.AccountID, s.TOTPSecret, s.TOTPEnabled, s.MustChange, s.LastStep, s.FailedCount, locked)
+	return err
+}
+
 // --- devices ---
 
 func (p *Postgres) CreateDevice(d Device) (Device, error) {

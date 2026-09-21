@@ -128,6 +128,7 @@ func TestBrowserClientSourceIsCSPClean(t *testing.T) {
 	for _, app := range []string{"arsip", "src"} { // the archive client and the earlier PDF-signing client
 		checkClientCSP(t, filepath.Join("..", "..", "..", "web", app))
 	}
+	checkClientCSP(t, "superadmin") // the separate super-admin page
 }
 
 func checkClientCSP(t *testing.T, src string) {

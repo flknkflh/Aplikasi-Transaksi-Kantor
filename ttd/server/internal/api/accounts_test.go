@@ -69,10 +69,10 @@ func TestAdminManagedBySuperAdmin(t *testing.T) {
 		t.Fatalf("register role/status = %v/%v, want user/pending", b["role"], b["status"])
 	}
 
-	// CREATE — a plain admin cannot; the super admin can, and it is active
-	mustCode(t, e.do("POST", "/api/v1/admin/admins", admin, map[string]string{
-		"username": "x@test", "password": "password123"}), http.StatusForbidden)
-	w = e.do("POST", "/api/v1/admin/admins", e.su, map[string]string{
+	// CREATE — an admin's token is not even valid on the super-admin routes; the super admin can
+	mustCode(t, e.do("POST", "/api/v1/superadmin/admins", admin, map[string]string{
+		"username": "x@test", "password": "password123"}), http.StatusUnauthorized)
+	w = e.do("POST", "/api/v1/superadmin/admins", e.su, map[string]string{
 		"username": "admin2@test", "password": "password123"})
 	mustCode(t, w, http.StatusCreated)
 	nb := jbody(t, w)
@@ -86,55 +86,55 @@ func TestAdminManagedBySuperAdmin(t *testing.T) {
 
 	// READ — roster is admins only (no client accounts)
 	e.account("someuser@test", store.RoleUser)
-	admins := jbody(t, e.do("GET", "/api/v1/admin/admins", e.su, nil))["admins"].([]any)
+	admins := jbody(t, e.do("GET", "/api/v1/superadmin/admins", e.su, nil))["admins"].([]any)
 	for _, a := range admins {
 		if role := a.(map[string]any)["role"]; role != store.RoleAdmin && role != store.RoleSuperAdmin {
 			t.Fatalf("admin roster leaked a %v", role)
 		}
 	}
-	if len(admins) < 3 { // _su@test + admin@test + admin2@test
+	if len(admins) < 4 { // _su@test + _admin@test + admin@test + admin2@test
 		t.Fatalf("admin roster too short: %v", admins)
 	}
 
 	// UPDATE — reset password + toggle status, super admin only, via /admin/admins/{id}
-	mustCode(t, e.do("PATCH", "/api/v1/admin/admins/"+id2, admin, map[string]string{"password": "newpass123"}), http.StatusForbidden)
-	mustCode(t, e.do("PATCH", "/api/v1/admin/admins/"+id2, e.su, map[string]string{"password": "newpass123"}), http.StatusOK)
+	mustCode(t, e.do("PATCH", "/api/v1/superadmin/admins/"+id2, admin, map[string]string{"password": "newpass123"}), http.StatusUnauthorized)
+	mustCode(t, e.do("PATCH", "/api/v1/superadmin/admins/"+id2, e.su, map[string]string{"password": "newpass123"}), http.StatusOK)
 	if login("admin2@test", "password123") != http.StatusUnauthorized {
 		t.Fatal("old password still works after reset")
 	}
 	if login("admin2@test", "newpass123") != http.StatusOK {
 		t.Fatal("new password does not work after reset")
 	}
-	mustCode(t, e.do("PATCH", "/api/v1/admin/admins/"+id2, e.su, map[string]string{"status": store.AccountDisabled}), http.StatusOK)
+	mustCode(t, e.do("PATCH", "/api/v1/superadmin/admins/"+id2, e.su, map[string]string{"status": store.AccountDisabled}), http.StatusOK)
 	if login("admin2@test", "newpass123") != http.StatusForbidden {
 		t.Fatal("disabled admin still logs in")
 	}
-	mustCode(t, e.do("PATCH", "/api/v1/admin/admins/"+id2, e.su, map[string]string{"status": store.AccountActive}), http.StatusOK)
+	mustCode(t, e.do("PATCH", "/api/v1/superadmin/admins/"+id2, e.su, map[string]string{"status": store.AccountActive}), http.StatusOK)
 	if login("admin2@test", "newpass123") != http.StatusOK {
 		t.Fatal("re-enabled admin cannot log in")
 	}
 
 	// DELETE — super admin only
-	mustCode(t, e.do("DELETE", "/api/v1/admin/admins/"+id2, admin, nil), http.StatusForbidden)
-	mustCode(t, e.do("DELETE", "/api/v1/admin/admins/"+id2, e.su, nil), http.StatusOK)
+	mustCode(t, e.do("DELETE", "/api/v1/superadmin/admins/"+id2, admin, nil), http.StatusUnauthorized)
+	mustCode(t, e.do("DELETE", "/api/v1/superadmin/admins/"+id2, e.su, nil), http.StatusOK)
 	if login("admin2@test", "newpass123") != http.StatusUnauthorized {
 		t.Fatal("deleted admin can still log in")
 	}
 
 	// the client-account routes refuse an admin target
-	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+adminID(t, e, "admin@test")+"/disable", e.su, nil), http.StatusForbidden)
+	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+adminID(t, e, "admin@test")+"/disable", e.badmin, nil), http.StatusForbidden)
 
 	// the super admin itself is locked everywhere
 	su := adminID(t, e, "_su@test")
-	mustCode(t, e.do("PATCH", "/api/v1/admin/admins/"+su, e.su, map[string]string{"status": store.AccountDisabled}), http.StatusForbidden)
-	mustCode(t, e.do("DELETE", "/api/v1/admin/admins/"+su, e.su, nil), http.StatusNotFound) // hDeleteAdmin only touches RoleAdmin
-	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+su+"/disable", e.su, nil), http.StatusForbidden)
+	mustCode(t, e.do("PATCH", "/api/v1/superadmin/admins/"+su, e.su, map[string]string{"status": store.AccountDisabled}), http.StatusForbidden)
+	mustCode(t, e.do("DELETE", "/api/v1/superadmin/admins/"+su, e.su, nil), http.StatusNotFound) // hDeleteAdmin only touches RoleAdmin
+	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+su+"/disable", e.badmin, nil), http.StatusForbidden)
 }
 
 // adminID resolves an account id by username from the super-admin roster.
 func adminID(t *testing.T, e *env, username string) string {
 	t.Helper()
-	for _, a := range jbody(t, e.do("GET", "/api/v1/admin/admins", e.su, nil))["admins"].([]any) {
+	for _, a := range jbody(t, e.do("GET", "/api/v1/superadmin/admins", e.su, nil))["admins"].([]any) {
 		if m := a.(map[string]any); m["username"] == username {
 			return m["account_id"].(string)
 		}

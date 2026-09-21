@@ -45,12 +45,14 @@ func main() {
 
 	cfg := api.Config{JWTSecret: secret, PublicBaseURL: *baseURL, AccessTTL: 15 * time.Minute}
 	cfg.SuperAdminUsername = envOr("PQC_SUPERADMIN_USERNAME", "superadmin")
-	cfg.SuperAdminPassword = os.Getenv("PQC_SUPERADMIN_PASSWORD") // "" -> generated + logged once
-	cfg.MaxUploadBytes = mbEnv("PQC_MAX_UPLOAD_MB", 25)           // absolute ceiling
-	cfg.MaxStampBytes = mbEnv("PQC_MAX_STAMP_MB", 150)            // server QR stamp (pdfcpu) cap
-	cfg.MaxVerifyBytes = mbEnv("PQC_MAX_VERIFY_MB", 350)          // strict re-verify cap; larger = store-only
-	cfg.WebDir = os.Getenv("PQC_WEB_DIR")                         // "" -> embedded browser client
-	cfg.OfficeUpstream = os.Getenv("PQC_OFFICE_UPSTREAM")         // e.g. http://ledger-api:8080
+	cfg.SuperAdminPassword = os.Getenv("PQC_SUPERADMIN_PASSWORD")    // "" -> generated + logged once
+	cfg.BootstrapAdminEmail = os.Getenv("PQC_BOOTSTRAP_ADMIN_EMAIL") // seed/dev only; see ensureBootstrapAdmin
+	cfg.BootstrapAdminPassword = os.Getenv("PQC_BOOTSTRAP_ADMIN_PASSWORD")
+	cfg.MaxUploadBytes = mbEnv("PQC_MAX_UPLOAD_MB", 25)   // absolute ceiling
+	cfg.MaxStampBytes = mbEnv("PQC_MAX_STAMP_MB", 150)    // server QR stamp (pdfcpu) cap
+	cfg.MaxVerifyBytes = mbEnv("PQC_MAX_VERIFY_MB", 350)  // strict re-verify cap; larger = store-only
+	cfg.WebDir = os.Getenv("PQC_WEB_DIR")                 // "" -> embedded browser client
+	cfg.OfficeUpstream = os.Getenv("PQC_OFFICE_UPSTREAM") // e.g. http://ledger-api:8080
 	cfg.OfficeSecret = os.Getenv("PQC_OFFICE_SECRET")
 	cfg.ServerName = envOr("PQC_SERVER_NAME", "Server Arsip")
 	cfg.UploadDir = os.Getenv("PQC_UPLOAD_DIR") // "" -> os.TempDir()

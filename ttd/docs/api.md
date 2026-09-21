@@ -34,10 +34,12 @@ Implemented (`server/internal/api`, tested in `api_test.go`):
 ✔ POST /api/v1/admin/crl/import
 ✔ GET  /api/v1/admin/audit-events
 ✔ GET  /api/v1/admin/capabilities                   ({lab_issuer:bool, role})
-✔ GET    /api/v1/admin/admins                        (super admin only: admin roster — admins only, no client accounts)
-✔ POST   /api/v1/admin/admins                        (super admin only: {username,password} -> active admin)
-✔ PATCH  /api/v1/admin/admins/{id}                   (super admin only: {password} reset and/or {status:"active"|"disabled"})
-✔ DELETE /api/v1/admin/admins/{id}                   (super admin only: delete an admin)
+✔ POST /api/v1/superadmin/login {username,password} -> {step:"totp"|"setup", challenge}   (separate login, docs/adr/0005)
+✔ POST /api/v1/superadmin/setup/begin {challenge,new_password} -> {secret,otpauth_uri,qr_png}
+✔ POST /api/v1/superadmin/setup/confirm {challenge,code} -> {access_token}
+✔ POST /api/v1/superadmin/verify {challenge,code} -> {access_token}      (TOTP; 15-min session)
+✔ GET  /api/v1/superadmin/me | POST /api/v1/superadmin/change-password {current,new}
+✔ GET|POST /api/v1/superadmin/admins | PATCH|DELETE /api/v1/superadmin/admins/{id}   (super-admin session only: the admin roster)
 ✔ GET  /api/v1/admin/accounts                       (RB-1; client + admin rows — mutations below are client-only)
 ✔ POST /api/v1/admin/accounts/{id}/approve|disable|enable   (CLIENT accounts only — 403 for any admin/superadmin target)
 ✔ PATCH  /api/v1/admin/accounts/{id}                ({full_name,organization}; client only)
@@ -57,13 +59,17 @@ and always creates a **pending end user** (`role:"user"`). Any `role` in the
 body is ignored — admins can no longer self-register. Login is refused (`403
 {account_status:"pending"}`) until an admin `POST /admin/accounts/{id}/approve`.
 
-**Account management.** One **super admin** is bootstrapped on first boot from
-`PQC_SUPERADMIN_USERNAME` (default `superadmin`) + `PQC_SUPERADMIN_PASSWORD`
-(empty → a random password is generated and logged once). Only the super admin
-can `POST /api/v1/admin/admins {username,password}` to create an **active**
-admin, and only the super admin can `disable`/`enable` an admin account. The
-super admin itself cannot be disabled or deleted. A super-admin session
-satisfies every `admin/*` route. Once approved, the first
+**Account management.** One **super admin** is created automatically on first
+start (`PQC_SUPERADMIN_USERNAME`, default `superadmin`). There is no built-in
+password: unless `PQC_SUPERADMIN_PASSWORD` supplies an initial one, a random
+one is printed ONCE in the server log. Its login is a **separate mechanism**
+(`/superadmin` page, `/api/v1/superadmin/*`): password, then — first time —
+a new password + enrolment of an authenticator app, then a 6-digit TOTP code.
+The ordinary `/auth/login` refuses it, its tokens are signed with their own
+keys, and it can use ONLY the `superadmin/*` routes (create / disable / reset /
+delete **admin** accounts) — none of the `admin/*` routes. It cannot be disabled
+or deleted. `PQC_BOOTSTRAP_ADMIN_EMAIL/PASSWORD` (seed/dev only) create a first
+ordinary admin when there is none. Once approved, the first
 `POST /devices/{id}/csr` from that account is **auto-issued** by the server's
 online CA (`Config.LabIssuer`) — the response carries `status:"issued"` and
 `certificate_serial`, no separate admin step. Disabling or deleting an account
@@ -135,10 +141,7 @@ the signing API when only verification should be reachable.
 ## Admin
 ```
 GET    /api/v1/admin/capabilities                ({lab_issuer, role})
-GET    /api/v1/admin/admins                       (super admin only: admin roster)
-POST   /api/v1/admin/admins                       (super admin only: {username,password} -> active admin)
-PATCH  /api/v1/admin/admins/{id}                  (super admin only: {password} reset, {status:"active"|"disabled"})
-DELETE /api/v1/admin/admins/{id}                  (super admin only)
+(admin accounts: see the /api/v1/superadmin/* routes above)
 GET    /api/v1/admin/accounts
 POST   /api/v1/admin/accounts/{id}/approve        (CLIENT accounts only)
 POST   /api/v1/admin/accounts/{id}/disable        (client only; cascade: revoke all certs + republish CRL)
@@ -146,10 +149,9 @@ POST   /api/v1/admin/accounts/{id}/enable         (client only)
 PATCH  /api/v1/admin/accounts/{id}                (client only; {full_name, organization})
 DELETE /api/v1/admin/accounts/{id}                (client only; cascade; tombstone if it has signatures)
 
-Admin accounts are managed ONLY via /admin/admins (super admin, full CRUD).
+Admin accounts are managed ONLY via /api/v1/superadmin/admins (super admin, full CRUD).
 The /admin/accounts/* mutation routes return 403 for any admin/superadmin
-target. In the /admin console the super admin sees ONLY the "Admin" view;
-regular admins see the client-account views and no "Admin" menu.
+target. The /admin console is for ordinary admins (client-account views); the super admin does not use it.
 GET    /api/v1/admin/enrollments
 POST   /api/v1/admin/enrollments/{id}/approve
 GET    /api/v1/admin/enrollments/{id}/export

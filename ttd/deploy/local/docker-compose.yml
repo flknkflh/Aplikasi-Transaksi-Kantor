@@ -43,7 +43,9 @@ services:
       # the password empty in real deploys — the server generates one and
       # prints it to the log once. The lab uses a fixed one so seed.sh can log in.
       PQC_SUPERADMIN_USERNAME: "${PQC_SUPERADMIN_USERNAME:-superadmin}"
-      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-}"   # empty: random, printed once in the log
+      PQC_BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-admin@local}"   # demo seeding only
+      PQC_BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}"
       # Large documents (docs/large-files.md). Signed PDFs go to a disk volume
       # instead of Postgres bytea. Tiers by size: <=STAMP -> server QR stamp;
       # <=VERIFY -> strict re-verify on submit; larger -> store-only (hash

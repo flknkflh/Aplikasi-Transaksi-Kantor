@@ -91,8 +91,14 @@ services:
       PQC_DATABASE_URL: "postgres://pqc:${TTD_DB_PASSWORD:-pqc}@ttd-db:5432/pqc?sslmode=disable"
       PQC_JWT_SECRET: "${PQC_JWT_SECRET:-local-prototype-secret-change-me-0123456789}"
       PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-http://localhost:18099}"
+      # The super admin is created automatically on first start with a RANDOM password printed once in
+      # this container's log (docker compose logs ttd | grep "SUPER ADMIN"); its login is /superadmin.
       PQC_SUPERADMIN_USERNAME: "${PQC_SUPERADMIN_USERNAME:-superadmin}"
-      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-}"
+      # DEMO ONLY: a first ordinary admin so seed.sh works without the interactive super-admin ceremony.
+      # Real deployments leave these empty and let the super admin create admins.
+      PQC_BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-admin@local}"
+      PQC_BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}"
       PQC_OBJECT_DIR: /objects
       PQC_UPLOAD_DIR: /objects/_incoming
       PQC_MAX_UPLOAD_MB: "1024"

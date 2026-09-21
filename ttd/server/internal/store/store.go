@@ -138,3 +138,14 @@ type AuditEvent struct {
 	Result    string
 	Detail    string
 }
+
+// SuperSecurity is the extra login state of the (single) super-admin account.
+type SuperSecurity struct {
+	AccountID   string
+	TOTPSecret  []byte // sealed by the API layer; never plaintext here
+	TOTPEnabled bool
+	MustChange  bool // the initial password must be replaced at first login
+	LastStep    int64
+	FailedCount int
+	LockedUntil time.Time
+}

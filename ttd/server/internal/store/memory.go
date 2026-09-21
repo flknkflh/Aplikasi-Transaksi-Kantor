@@ -23,6 +23,7 @@ type Memory struct {
 	signatures   map[string]Signature
 	audit        []AuditEvent
 	objects      map[string][]byte
+	super        map[string]SuperSecurity
 }
 
 func NewMemory() *Memory {
@@ -35,6 +36,7 @@ func NewMemory() *Memory {
 		reservations: map[string]Reservation{},
 		signatures:   map[string]Signature{},
 		objects:      map[string][]byte{},
+		super:        map[string]SuperSecurity{},
 	}
 }
 
@@ -472,4 +474,22 @@ func (m *Memory) AuditEvents(limit int) []AuditEvent {
 	out := make([]AuditEvent, limit)
 	copy(out, m.audit[len(m.audit)-limit:])
 	return out
+}
+
+// --- super-admin security ---
+
+func (m *Memory) SuperSecurity(id string) (SuperSecurity, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.super[id]; ok {
+		return s, nil
+	}
+	return SuperSecurity{}, ErrNotFound
+}
+
+func (m *Memory) PutSuperSecurity(s SuperSecurity) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.super[s.AccountID] = s
+	return nil
 }

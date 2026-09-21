@@ -94,7 +94,7 @@ func TestOfficeProxyAuthenticatesAndVouchesForTheCaller(t *testing.T) {
 func TestOfficeProxyRefusesADisabledAccount(t *testing.T) {
 	e, _ := officeEnv(t)
 	user := e.account("nonaktif@test", store.RoleUser)
-	w := e.do("GET", "/api/v1/admin/accounts", e.su, nil)
+	w := e.do("GET", "/api/v1/admin/accounts", e.badmin, nil)
 	mustCode(t, w, http.StatusOK)
 	var id string
 	for _, a := range jbodyAccounts(t, w) {
@@ -108,7 +108,7 @@ func TestOfficeProxyRefusesADisabledAccount(t *testing.T) {
 	if id == "" {
 		t.Fatalf("account not listed: %s", w.Body.String())
 	}
-	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+id+"/disable", e.su, nil), http.StatusOK)
+	mustCode(t, e.do("POST", "/api/v1/admin/accounts/"+id+"/disable", e.badmin, nil), http.StatusOK)
 	if w := e.doHdr("GET", "/office/me", user, nil, nil); w.Code != http.StatusForbidden {
 		t.Fatalf("a disabled account must not use the office service: %d", w.Code)
 	}

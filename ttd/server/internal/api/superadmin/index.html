@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Super Admin</title>
+<link rel="stylesheet" href="superadmin.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span> Super Admin <span class="ver">akses terpisah</span></div>
+  <div class="who" id="who" hidden>
+    <span id="whoName"></span>
+    <span class="timer" id="timer" title="Sesi berakhir otomatis"></span>
+    <button type="button" class="btn ghost sm" id="btnPw">Ubah sandi</button>
+    <button type="button" class="btn secondary sm" id="btnOut">Keluar</button>
+  </div>
+</header>
+
+<main>
+  <div class="banner warn">Halaman ini khusus untuk membuat dan mengelola akun <b>admin</b>. Pengguna dan admin biasa masuk lewat <a href="/app/">/app/</a>.</div>
+
+  <!-- step 1: username + password -->
+  <section class="screen active" id="scLogin">
+    <h1>Masuk sebagai super admin</h1>
+    <p class="sub">Butuh kata sandi <b>dan</b> kode 6 digit dari aplikasi authenticator.</p>
+    <form class="card" id="fLogin" autocomplete="off">
+      <label for="lUser">Nama pengguna</label>
+      <input type="text" id="lUser" autocomplete="username" />
+      <label for="lPass">Kata sandi</label>
+      <input type="password" id="lPass" autocomplete="current-password" />
+      <div class="mt18"><button class="btn block" type="submit" id="lGo">Lanjut</button></div>
+      <div class="msg" id="lMsg"></div>
+    </form>
+  </section>
+
+  <!-- step 2a: TOTP code -->
+  <section class="screen" id="scCode">
+    <h1>Kode verifikasi</h1>
+    <p class="sub">Masukkan kode 6 digit dari aplikasi authenticator Anda.</p>
+    <form class="card" id="fCode" autocomplete="off">
+      <label for="cCode">Kode</label>
+      <input type="text" id="cCode" inputmode="numeric" maxlength="7" autocomplete="one-time-code" class="code" />
+      <div class="mt18"><button class="btn block" type="submit" id="cGo">Masuk</button></div>
+      <div class="msg" id="cMsg"></div>
+      <div class="mt14"><button type="button" class="btn ghost" id="cBack">← Ulangi dari awal</button></div>
+    </form>
+  </section>
+
+  <!-- step 2b: first login — new password, then enrol the authenticator -->
+  <section class="screen" id="scSetup">
+    <h1>Pengaturan awal</h1>
+    <p class="sub" id="suSub">Ganti kata sandi awal, lalu daftarkan aplikasi authenticator.</p>
+    <form class="card" id="fSetup" autocomplete="off">
+      <div id="suPwBox">
+        <label for="suNew">Kata sandi baru <span class="faint">(min. 12 karakter)</span></label>
+        <input type="password" id="suNew" autocomplete="new-password" />
+        <label for="suNew2">Ulangi kata sandi baru</label>
+        <input type="password" id="suNew2" autocomplete="new-password" />
+      </div>
+      <div class="mt18"><button class="btn block" type="submit" id="suGo">Lanjut ke authenticator</button></div>
+      <div class="msg" id="suMsg"></div>
+    </form>
+    <form class="card" id="fEnrol" autocomplete="off" hidden>
+      <p class="hint mt0">1. Buka aplikasi authenticator (Google Authenticator, Microsoft Authenticator, Aegis, dsb.).<br />
+        2. Pindai kode QR ini, atau ketik kunci rahasianya.<br />3. Masukkan kode 6 digit yang muncul.</p>
+      <div class="qr"><img id="suQr" alt="Kode QR authenticator" width="220" height="220" /></div>
+      <label>Kunci rahasia (jika tidak bisa memindai)</label>
+      <div class="hashbox" id="suSecret"></div>
+      <label for="suCode">Kode 6 digit</label>
+      <input type="text" id="suCode" inputmode="numeric" maxlength="7" autocomplete="one-time-code" class="code" />
+      <div class="mt18"><button class="btn block" type="submit" id="suConfirm">Aktifkan &amp; masuk</button></div>
+      <div class="msg" id="enMsg"></div>
+    </form>
+  </section>
+
+  <!-- console -->
+  <section class="screen" id="scHome">
+    <h1>Akun admin</h1>
+    <p class="sub">Super admin hanya membuat dan mengelola admin. Admin-lah yang menyetujui pengguna dan mengurus arsip.</p>
+    <div class="card">
+      <h3 class="h3 mt0">Buat admin baru</h3>
+      <form id="fNew" class="newrow" autocomplete="off">
+        <input type="text" id="nUser" placeholder="Nama pengguna / email admin" />
+        <input type="text" id="nPass" placeholder="Kata sandi awal (min. 10 karakter)" autocomplete="off" />
+        <button type="button" class="btn secondary" id="nGen">Buat sandi acak</button>
+        <button type="submit" class="btn" id="nGo">Buat admin</button>
+      </form>
+      <div class="msg" id="nMsg"></div>
+      <div class="banner ok" id="nDone" hidden></div>
+    </div>
+    <div class="card">
+      <div id="adList"></div>
+    </div>
+  </section>
+
+  <!-- change own password -->
+  <section class="screen" id="scPw">
+    <h1>Ubah kata sandi</h1>
+    <form class="card" id="fPw" autocomplete="off">
+      <label for="pCur">Kata sandi saat ini</label>
+      <input type="password" id="pCur" autocomplete="current-password" />
+      <label for="pNew">Kata sandi baru <span class="faint">(min. 12 karakter)</span></label>
+      <input type="password" id="pNew" autocomplete="new-password" />
+      <div class="row mt18">
+        <button type="submit" class="btn">Simpan</button>
+        <button type="button" class="btn secondary" id="pBack">Batal</button>
+      </div>
+      <div class="msg" id="pMsg"></div>
+    </form>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="superadmin.js"></script>
+</body>
+</html>
