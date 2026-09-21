@@ -19,19 +19,19 @@ at real data.
 - [x] M5 — indexer written and builds cleanly (Fabric chaincode events → Postgres read model) — live end-to-end run pending
 - [ ] M6 — audit-service written and builds cleanly; docker-compose wiring, smoke test, and benchmark script written — **not yet run against the live stack**
 
-Implementation note: ML-KEM-768 turned out to already be in the Go standard
-library (`crypto/mlkem`, since Go 1.24), so the hybrid KEM (`crypto/kem.go`)
-needs no liboqs/cgo — only ML-DSA-65 signing does. See
-[docs/adr/0001-fase1-spike-scope.md](docs/adr/0001-fase1-spike-scope.md)
-decision #5.
+Implementation note: both post-quantum algorithms come from the **Go standard
+library** — ML-KEM-768 (`crypto/mlkem`, since Go 1.24) and ML-DSA-65
+(`crypto/mldsa`, since Go 1.27) — so every module here is pure Go, no cgo and no
+liboqs. (An earlier revision used liboqs for ML-DSA on a mistaken reading of
+the Go release notes; corrected in
+[docs/adr/0001-fase1-spike-scope.md](docs/adr/0001-fase1-spike-scope.md), addendum.)
 
 ## Prerequisites
 
 - Docker Desktop (Windows/Mac: host.docker.internal support is used to let
   api/indexer/audit-service reach the separately-managed Fabric test network)
-- Go 1.27+ (only needed to run chaincode/crypto unit tests outside Docker;
-  crypto/api/audit-service need liboqs and are built inside a Docker image —
-  see `infra/Dockerfile.godev`)
+- Go 1.27+ (crypto/chaincode/api/indexer/audit-service all build and test
+  natively; Docker is only needed to run the full stack)
 - Git Bash or WSL to run the `.sh` scripts (Windows: a stalled/very slow
   `curl`/`docker pull` usually means a VPN with an MTU below Docker's default
   1500 — see the `pqc-ledger-buildnet` note in `network/bootstrap.sh`'s
@@ -64,12 +64,7 @@ scripts/         smoke-test.sh, bench.sh
    network, creates channel `ledgerchannel`, and deploys the `transaction`
    and `asset` chaincodes. Large downloads — expect several minutes.
 
-2. **Build the liboqs-enabled Go image** (used to build/test crypto/api/audit-service):
-   ```bash
-   docker build -f infra/Dockerfile.godev -t pqc-ledger/godev:latest .
-   ```
-
-3. **Bring up Postgres, MinIO, and the app services:**
+2. **Bring up Postgres, MinIO, and the app services:**
    ```bash
    cd infra
    cp .env.example .env   # dev-only defaults; see the file's comment
@@ -78,7 +73,7 @@ scripts/         smoke-test.sh, bench.sh
    This runs migrations automatically (the `migrate` one-shot service) and
    starts `api` (port 8080), `audit-service` (port 8081), and `indexer`.
 
-4. **Run the end-to-end smoke test:**
+3. **Run the end-to-end smoke test:**
    ```bash
    bash scripts/smoke-test.sh
    ```
@@ -87,7 +82,7 @@ scripts/         smoke-test.sh, bench.sh
    independently re-verifies the signatures from the ledger. Also asserts a
    duplicate `idempotency_key` is rejected.
 
-5. **Benchmark envelope size / commit latency** (PRD §9 — local numbers only, not a production SLA):
+4. **Benchmark envelope size / commit latency** (PRD §9 — local numbers only, not a production SLA):
    ```bash
    bash scripts/bench.sh 10
    ```
@@ -145,11 +140,9 @@ silently dropped instead of properly fragmented. Fixes used in this repo:
 ## Testing
 
 ```bash
-# Chaincode + indexer (pure Go, no liboqs needed)
+# Everything is pure Go — no Docker needed to build or unit-test
+cd crypto && go test ./...
 cd chaincode/transaction && go test ./...
 cd chaincode/asset && go test ./...
-cd indexer && go build ./...
-
-# crypto / api / audit-service (need liboqs — run inside the godev image)
-docker run --rm -v "$(pwd):/workspace" -w /workspace/crypto pqc-ledger/godev:latest go test ./...
+cd api && go build ./... && cd ../indexer && go build ./... && cd ../audit-service && go build ./...
 ```

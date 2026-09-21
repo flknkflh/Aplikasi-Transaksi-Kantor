@@ -10,12 +10,10 @@ import (
 )
 
 // Hybrid KEM: X25519 + ML-KEM-768 (PRD §1: "pertukaran kunci hybrid: X25519
-// atau P-256 + ML-KEM-768"). Unlike ML-DSA-65 (crypto/mldsa.go, needs
-// liboqs), ML-KEM-768 has been in the Go standard library since Go 1.24
-// (crypto/mlkem), so this half needs no cgo — a refinement discovered while
-// implementing docs/adr/0001-fase1-spike-scope.md decision #5, not a change
-// to it: it's still real, standards-track ML-KEM-768, just via the Go
-// team's own audited implementation instead of liboqs.
+// atau P-256 + ML-KEM-768"). ML-KEM-768 has been in the Go standard library
+// since Go 1.24 (crypto/mlkem) — and ML-DSA-65 since Go 1.27 (crypto/mldsa,
+// see mldsa.go) — so the whole module needs no cgo: real, standards-track
+// algorithms via the Go team's own implementation.
 //
 // This is a library-level demo of the combiner, not wired into any
 // transport — see the ADR for why.

@@ -15,7 +15,7 @@ import (
 
 // allowedAlgorithmSuite must match crypto.SuiteHybridEd25519MLDSA65V1 in
 // ledger/crypto (duplicated here for the same reason as the transaction
-// contract — no liboqs/cgo dependency in chaincode).
+// contract — chaincode has no dependency on the crypto module).
 const allowedAlgorithmSuite = "HYBRID_ED25519_MLDSA65_V1"
 
 // allowedLifecycleTransitions is a superset of PRD §5.2's suggested linear

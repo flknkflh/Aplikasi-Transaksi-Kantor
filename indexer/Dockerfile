@@ -1,4 +1,4 @@
-# No liboqs/cgo needed — the indexer never signs or verifies anything (see
+# Pure Go — the indexer never signs or verifies anything (see
 # the package doc in indexer/main.go). It also has no local sibling-module
 # dependency (unlike api/ and audit-service/, it doesn't import ledger/crypto),
 # so unlike their Dockerfiles this one builds indexer/ standalone without

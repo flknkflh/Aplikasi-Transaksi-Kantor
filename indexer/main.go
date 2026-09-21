@@ -2,7 +2,7 @@
 // Postgres read model (PRD §6 "Indexer dan Event Worker", FR-009). It never
 // writes to the ledger — only api/'s outbox worker does that — and never
 // signs anything, so unlike api/ and audit-service/ it has no dependency on
-// ledger/crypto or liboqs.
+// ledger/crypto.
 package main
 
 import (

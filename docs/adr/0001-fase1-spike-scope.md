@@ -57,3 +57,26 @@ the first phase actually being built.
   encrypted-at-rest object storage with real KMS-backed envelope encryption,
   SSO/MFA, or any HA/production topology. These remain Fase 2+ work per the
   PRD roadmap and must not be assumed "done" from this spike.
+
+## Addendum (2026-09-21): ML-DSA-65 is in the Go standard library — liboqs removed
+
+Decision #1 and the original build notes assumed ML-DSA-65 needed liboqs
+(cgo). That was wrong: Go 1.27 ships `crypto/mldsa` (FIPS 204) and `crypto/x509`
+support for it. The check that led to the wrong conclusion only read the Go
+1.25/1.26 release notes, not 1.27's.
+
+Changes made:
+
+- `crypto/mldsa.go` now uses `crypto/mldsa`. The "private key" is the 32-byte
+  FIPS 204 seed (`PrivateKey.Bytes()`); public keys are the 1952-byte FIPS 204
+  encoding, the same encoding liboqs used, so `key_reference.public_key` rows
+  stay valid. Signatures are still 3309 bytes ("pure" ML-DSA, empty context).
+- `liboqs-go` removed from `crypto`, `api`, `audit-service`; `infra/Dockerfile.godev`
+  and the liboqs build stage in `api/Dockerfile` and `audit-service/Dockerfile`
+  deleted. Every module now builds and tests natively with no cgo and no Docker.
+- Incompatible on purpose: a dev keystore file written by the old liboqs build
+  holds ~4 KB expanded secret keys, not seeds, and will be rejected with a clear
+  error. No live run ever persisted such a file, so nothing is lost.
+- The earlier bug where signing zeroed the caller's key buffer (a liboqs-go
+  aliasing quirk) cannot occur any more; `TestMLDSASigningDoesNotConsumeCallerKey`
+  keeps guarding it.

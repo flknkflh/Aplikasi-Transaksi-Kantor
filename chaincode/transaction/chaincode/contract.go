@@ -27,8 +27,8 @@ import (
 
 // allowedAlgorithmSuite must match crypto.SuiteHybridEd25519MLDSA65V1 in
 // ledger/crypto. Duplicated as a plain string here (rather than importing
-// the crypto module) because chaincode deliberately has no liboqs/cgo
-// dependency — see the package doc and ADR-0001.
+// the crypto module) because chaincode deliberately has no dependency on it
+// (signatures are verified in the API and audit-service) — see ADR-0001.
 const allowedAlgorithmSuite = "HYBRID_ED25519_MLDSA65_V1"
 
 // allowedTransitions encodes the status state machine from PRD §5.1/§5.2.

@@ -11,7 +11,7 @@ N=${1:-5}
 echo "== hybrid signature envelope size (from crypto unit tests) =="
 echo "See crypto/hybrid_test.go TestHybridEnvelopeSize output, e.g.:"
 echo "  classical (Ed25519): 64 bytes, pqc (ML-DSA-65): ~3309 bytes, combined: ~3373 bytes"
-echo "Run 'go test ./... -run TestHybridEnvelopeSize -v' inside the godev container for a fresh measurement."
+echo "Run 'go test ./... -run TestHybridEnvelopeSize -v' in ./crypto for a fresh measurement."
 echo
 
 echo "== submit-to-commit latency over $N transactions =="

@@ -2,8 +2,8 @@
 // exchange primitives described in docs/Hybrid_PQC_Permissioned_Blockchain_PRD.md
 // §7 and §10: crypto-agile algorithm_suite envelopes, domain-separated
 // signing contexts, and fail-closed verification. See docs/adr/0001 for the
-// Fase 1 spike's scope decisions (Ed25519 classical half, ML-DSA-65 via
-// liboqs, ML-KEM-768 via the Go standard library).
+// Fase 1 spike's scope decisions (Ed25519 classical half, ML-DSA-65 and
+// ML-KEM-768 both via the Go standard library — no cgo).
 package crypto
 
 import (
