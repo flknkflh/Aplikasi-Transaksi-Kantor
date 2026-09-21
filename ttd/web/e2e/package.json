@@ -1,0 +1,8 @@
+{
+  "name": "pqc-ttd-web-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end test of the browser client in a real Chrome (playwright-core drives the system browser; no bundled browsers).",
+  "scripts": { "test": "node run.mjs" },
+  "devDependencies": { "playwright-core": "^1.49.0" }
+}

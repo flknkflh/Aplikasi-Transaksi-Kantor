@@ -23,12 +23,9 @@ if ! curl -fsS "$BASE/api/v1/public/ca/root.crt" >/dev/null 2>&1; then
   echo "!! no receiver at $BASE — run 'bash tools/dev-up.sh' first"; exit 1
 fi
 
-reg() { # email pass [role] [full_name] [org] -> HTTP code, echoes account_id on stdout
-  local email=$1 pass=$2 role=${3:-user} name=${4:-$1} org=${5:-Lab}
-  local body http
-  body=$(curl -sS -X POST "$BASE/api/v1/auth/register" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$email\",\"password\":\"$pass\",\"role\":\"$role\",\"full_name\":\"$name\",\"organization\":\"$org\"}")
-  echo "$body" | jval account_id
+reg() { # email pass [full_name] [org] -> echoes account_id (self-registration is always a pending user)
+  local email=$1 pass=$2 name=${3:-$1} org=${4:-Lab}
+  curl -sS -X POST "$BASE/api/v1/auth/register" -H 'Content-Type: application/json'     -d "{\"email\":\"$email\",\"password\":\"$pass\",\"full_name\":\"$name\",\"organization\":\"$org\"}" | jval account_id
 }
 
 login() { # email pass -> access_token
@@ -37,12 +34,15 @@ login() { # email pass -> access_token
 }
 
 echo ">> provisioning at $BASE"
-reg admin@local admin12345 admin "Administrator" "Lab" >/dev/null || true
+# Admins can only be created by the super admin (dev-up.sh sets its password).
+SU=$(login superadmin dev-superadmin-12345 || true)
+[ -n "$SU" ] || { echo "!! super admin login failed (was the receiver started by tools/dev-up.sh?)"; exit 1; }
+curl -sS -X POST "$BASE/api/v1/admin/admins" -H "Authorization: Bearer $SU" -H 'Content-Type: application/json'   -d '{"username":"admin@local","password":"admin12345"}' >/dev/null || true
 ADM=$(login admin@local admin12345 || true)
 [ -n "$ADM" ] || { echo "!! admin login failed"; exit 1; }
 echo "   admin@local ready"
 
-UID_=$(reg user@local user12345 user "Budi Santoso" "Dinas Kominfo" || true)
+UID_=$(reg user@local user12345 "Budi Santoso" "Dinas Kominfo" || true)
 if [ -n "$UID_" ]; then
   curl -fsS -X POST "$BASE/api/v1/admin/accounts/$UID_/approve" -H "Authorization: Bearer $ADM" >/dev/null
   echo "   user@local created + approved"

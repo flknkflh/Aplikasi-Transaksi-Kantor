@@ -109,6 +109,7 @@ function pinDialog(opts) {
   $('pinTitle').textContent = opts.title;
   $('pinText').textContent = opts.text || '';
   $('pinOld').value = ''; $('pin1').value = ''; $('pin2').value = ''; $('pinMsg').textContent = '';
+  $('pinOk').disabled = false; $('pinOk').classList.remove('loading');
   $('pinOldLbl').hidden = $('pinOld').hidden = !askOld;
   $('pin1Lbl').textContent = askOld ? 'PIN baru' : 'PIN';
   $('pin2Lbl').hidden = $('pin2').hidden = !askNew;
@@ -449,6 +450,9 @@ function placeDefaultBox(sw, sh) {
   box.style.top = Math.round(sh - h - 0.10 * sh) + 'px';
   placeInit = S.file.name;
   clampBox();
+  // bring the (default bottom-right) box into view inside the preview scroller
+  const sc = document.querySelector('.qr-scroll');
+  sc.scrollTop = Math.max(0, box.offsetTop - sc.clientHeight / 2);
 }
 
 function clampBox() {
