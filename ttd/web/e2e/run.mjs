@@ -20,8 +20,11 @@ const isWin = process.platform === 'win32';
 const exe = isWin ? '.exe' : '';
 const work = path.join(ttd, 'dist', 'e2e');
 const PORT = Number(process.env.E2E_PORT || 18199);
-const BASE = `http://127.0.0.1:${PORT}`;
-const SU_PASS = 'e2e-superadmin-12345';
+// E2E_EXTERNAL=http://localhost:18099 runs against an already-running stack (e.g. the
+// Docker one, seeded with superadmin/superadmin12345) instead of starting its own server.
+const EXTERNAL = process.env.E2E_EXTERNAL;
+const BASE = EXTERNAL || `http://127.0.0.1:${PORT}`;
+const SU_PASS = process.env.E2E_SU_PASS || (EXTERNAL ? 'superadmin12345' : 'e2e-superadmin-12345');
 const sample = path.join(ttd, 'tests', 'fixtures', 'sample.pdf');
 
 const CHROME = process.env.CHROME_PATH || [
@@ -94,7 +97,7 @@ const mySigs = async (token) => (await call('GET', '/api/v1/me/signatures', { to
 const login = async (email, password) => (await call('POST', '/api/v1/auth/login', { json: { email, password } }));
 
 // ---------- main ----------
-const server = await startServer();
+const server = EXTERNAL ? { proc: { kill() {} } } : await startServer();
 let browser;
 try {
   if (!CHROME) throw new Error('no Chrome/Edge found; set CHROME_PATH');
@@ -128,7 +131,7 @@ try {
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   page.on('console', (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) consoleCSP.push(m.text()); });
 
-  const email = 'budi@instansi.test', password = 'kata-sandi-1', pin = 'banyak-rahasia', pin2 = 'pin-baru-789';
+  const email = EXTERNAL ? `budi${Date.now()}@instansi.test` : 'budi@instansi.test', password = 'kata-sandi-1', pin = 'banyak-rahasia', pin2 = 'pin-baru-789';
 
   // ---- admin setup (out-of-band, like the admin console) ----
   section('setup');
@@ -182,18 +185,17 @@ try {
   check('server issued a certificate for it', devices[0].certificate_status === 'active', JSON.stringify(devices[0]));
 
   // What is at rest in IndexedDB?
-  const idb = await page.evaluate(() => new Promise((resolve, reject) => {
+  const idb = await page.evaluate((mail) => new Promise((resolve, reject) => {
     const rq = indexedDB.open('pqc-ttd');
     rq.onerror = () => reject(rq.error);
     rq.onsuccess = () => {
-      const g = rq.result.transaction('vaults').objectStore('vaults').get(email0());
-      function email0() { return 'budi@instansi.test'; }
+      const g = rq.result.transaction('vaults').objectStore('vaults').get(mail);
       g.onsuccess = () => {
         const v = g.result; const u8 = new Uint8Array(v.blob);
         resolve({ bound: v.bound, hasCert: !!v.certPEM, plaintextMarker: new TextDecoder('latin1').decode(u8).includes('pqc-webkey'), len: u8.length, keys: Object.keys(v) });
       };
     };
-  }));
+  }), email);
   check('vault is sealed with the non-extractable device-binding key', idb.bound === true, JSON.stringify(idb));
   check('stored key blob is not readable as the PIN envelope (double-wrapped)', idb.plaintextMarker === false);
 
