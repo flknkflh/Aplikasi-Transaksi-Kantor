@@ -248,3 +248,33 @@ table.hist tr:last-child td { border-bottom: 0; }
 .dl { margin-top: 12px; }
 a.btn { text-decoration: none; }
 body.placing main, body.hist main { max-width: 1040px; }
+
+/* ---- office screens ---- */
+.nav { display: flex; gap: 6px; padding: 8px 22px; background: var(--bg-elev); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.nav button { border: 0; background: transparent; color: var(--fg-soft); font: inherit; font-weight: 600; padding: 8px 14px;
+  border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.nav button:hover { color: var(--fg); }
+.nav button.on { background: var(--accent-soft); color: var(--accent); }
+.nav .count { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--accent);
+  color: var(--accent-fg); font-size: 11px; text-align: center; }
+body.hist main, body.office main { max-width: 1040px; }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar .spacer { flex: 1; }
+select, textarea { width: 100%; padding: 10px 12px; font: inherit; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.toolbar select { width: auto; }
+select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pill.neutral { background: var(--bg); color: var(--fg-soft); border: 1px solid var(--border); }
+.banner.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.mt4 { margin-top: 4px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--bg); }
+.h2 { font-size: 18px; margin: 0 0 6px; letter-spacing: -.01em; }
+.h3 { font-size: 14px; margin: 22px 0 8px; color: var(--fg-soft); text-transform: uppercase; letter-spacing: .05em; }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 2px solid var(--border); }
+.timeline li { position: relative; padding: 0 0 16px 14px; }
+.timeline li::before { content: ""; position: absolute; left: -23px; top: 5px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg-elev); }
+.tl-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+a { color: var(--accent); }

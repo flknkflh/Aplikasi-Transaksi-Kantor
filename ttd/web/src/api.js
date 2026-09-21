@@ -41,6 +41,9 @@ async function req(method, path, { body, type, raw } = {}) {
   return text ? JSON.parse(text) : {};
 }
 
+// Exposed for the office client (office.js), which talks to /office/* through the same session.
+export const request = req;
+
 const json = (method, path, obj) => req(method, path, { body: JSON.stringify(obj || {}), type: 'application/json' });
 
 export const isTooLarge = (e) => e instanceof ApiError && e.status === 413;

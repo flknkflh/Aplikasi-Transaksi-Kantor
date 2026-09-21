@@ -26,6 +26,27 @@ liboqs. (An earlier revision used liboqs for ML-DSA on a mistaken reading of
 the Go release notes; corrected in
 [docs/adr/0001-fase1-spike-scope.md](docs/adr/0001-fase1-spike-scope.md), addendum.)
 
+## Aplikasi terpadu: transaksi kantor + TTD
+
+Satu aplikasi web (login tunggal) untuk transaksi kantor: **pemohon** mengajukan permintaan + PDF,
+**penyetuju** menyetujuinya dengan **tanda tangan digital di browser** pada PDF itu, dan setiap langkah
+dicatat sebagai peristiwa bertanda tangan hybrid dan berantai hash (antre ke ledger Fabric). Desain:
+[docs/adr/0003-office-app.md](docs/adr/0003-office-app.md).
+
+```bash
+cd deploy/office
+docker compose up -d --build     # ttd + ledger-api + 2x Postgres + MinIO
+bash seed.sh                     # akun demo (pemohon@local, penyetuju@local, ...)
+# buka http://localhost:18099/app/
+
+# tes end-to-end di Chrome asli (perlu stack di atas berjalan)
+(cd ../../ttd/web/e2e && npm ci && node office.mjs)
+```
+
+Status jujur: alur pengajuan → persetujuan TTD → selesai/tolak berjalan penuh dan teruji; jaringan
+Fabric **belum terhubung** pada stack ini (`FABRIC_ENABLED=false`): peristiwa tersimpan lengkap dan menunggu
+dicatat ke blockchain (UI menampilkan statusnya). Lihat batasan di ADR-0003.
+
 ## TTD Digital (browser)
 
 Digital signatures on PDF documents, using the mechanism of the owner's *PQC PDF Sign V1*

@@ -11,6 +11,7 @@
 import * as api from './api.js';
 import * as vault from './vault.js';
 import * as signer from './signer.js';
+import * as office from './office.js';
 
 const $ = (id) => document.getElementById(id);
 const pdfjs = window.pdfjsLib;
@@ -26,6 +27,8 @@ const S = {
   rec: null,        // vault record (key blob is encrypted; never the plaintext key)
   cert: null,       // { state: 'none'|'pending'|'active'|'expired'|'rootchanged', info }
   file: null,       // { name, bytes } chosen for signing
+  me: null,         // /office/me (null when the office service is not deployed)
+  approval: null,   // { txId, title, docId, fileName, pid } while signing on behalf of a request
   outUrl: '',
 };
 
@@ -37,6 +40,7 @@ function screen(id) {
   $(id).classList.add('active');
   document.body.classList.toggle('placing', id === 'scPlace');
   document.body.classList.toggle('hist', id === 'scHistory');
+  document.body.classList.toggle('office', id === 'scTx' || id === 'scTxDetail' || id === 'scRoles');
 }
 
 let toastT;
@@ -207,19 +211,41 @@ $('paneLogin').addEventListener('submit', (ev) => {
 async function enterApp() {
   $('acctEmail').textContent = S.email;
   $('acct').hidden = false;
+  fatal('');
+  try {
+    S.me = await office.me();
+  } catch (e) {
+    if (e && e.status === 401) { logout(); toast('Sesi berakhir, silakan masuk lagi.', 'bad'); return; }
+    S.me = null; // office service not deployed: the TTD hub still works on its own
+  }
+  if (S.me) await officeUI.enter(S.me); else showTTD();
+}
+
+function showTTD() {
+  if (S.me) officeUI.setNav('ttd');
+  renderHome();
   screen('scHome');
-  $('goSign').disabled = true;
-  $('homeSub').textContent = 'Menyiapkan perangkat…';
-  $('homeNote').textContent = ''; $('rootFp').textContent = '';
+}
+
+// The device key is created the first time it is needed (signing / approving),
+// not at login — a plain requester never has to make a PIN.
+async function ensureDevice() {
+  if (S.cert && S.cert.state === 'active') return true;
   fatal('');
   try {
     S.cert = await prepareDevice();
   } catch (e) {
-    if (e && e.status === 401) { logout(); toast('Sesi berakhir, silakan masuk lagi.', 'bad'); return; }
     S.cert = { state: 'none' };
+    if (e && e.status === 401) { logout(); toast('Sesi berakhir, silakan masuk lagi.', 'bad'); return false; }
     fatal(friendly(e));
+    return false;
   }
   renderHome();
+  if (S.cert.state === 'active') return true;
+  toast(S.cert.state === 'pending'
+    ? 'Sertifikat belum terbit. Pastikan akun disetujui admin, lalu coba lagi.'
+    : 'Perangkat belum siap menandatangani.', 'bad');
+  return false;
 }
 
 // ---------- device enrollment (port of appcore.EnsureEnrolled/CertificateStatus) ----------
@@ -317,7 +343,6 @@ async function certificateStatus(pinHint) {
 function renderHome() {
   const c = S.cert || { state: 'none' };
   const active = c.state === 'active';
-  $('goSign').disabled = !active;
   $('homeNote').textContent = '';
   if (active) {
     $('homeSub').textContent = 'Perangkat terverifikasi dan siap menandatangani.';
@@ -328,15 +353,15 @@ function renderHome() {
     $('homeSub').textContent = 'PERINGATAN: Root CA di server berbeda dari yang dipercaya perangkat ini. Penandatanganan dinonaktifkan.';
     fatal('Root CA berubah sejak pendaftaran perangkat. Jika perubahan ini sah (rotasi CA), gunakan “Reset perangkat ini” lalu daftarkan ulang.');
   } else {
-    $('homeSub').textContent = 'Perangkat belum siap.';
+    $('homeSub').textContent = 'Kunci tanda tangan dibuat di browser ini saat pertama kali Anda menandatangani.';
   }
 }
 
-$('goSign').addEventListener('click', () => { resetSign(); screen('scSign'); });
+$('goSign').addEventListener('click', async () => { if (!(await ensureDevice())) return; resetSign(); screen('scSign'); });
 $('goVerify').addEventListener('click', () => { resetVerify(); screen('scVerify'); });
 $('goHistory').addEventListener('click', () => showHistory());
 $('signBack').addEventListener('click', () => screen('scHome'));
-$('placeBack').addEventListener('click', () => screen('scSign'));
+$('placeBack').addEventListener('click', () => { if (S.approval) officeUI.openTx(S.approval.txId); else screen('scSign'); });
 $('verifyBack').addEventListener('click', () => screen('scHome'));
 $('histBack').addEventListener('click', () => screen('scHome'));
 
@@ -344,7 +369,8 @@ $('histBack').addEventListener('click', () => screen('scHome'));
 function logout() {
   api.setToken('');
   signer.shutdown();
-  S.email = ''; S.rec = null; S.cert = null; S.file = null;
+  S.email = ''; S.rec = null; S.cert = null; S.file = null; S.me = null; S.approval = null;
+  officeUI.leave();
   try { sessionStorage.removeItem('pqc_email'); } catch { /* ignore */ }
   clearOut();
   $('acct').hidden = true; $('lpw').value = '';
@@ -362,7 +388,7 @@ $('acctMenu').addEventListener('click', async (e) => {
     if (act === 'history') return showHistory();
     if (act === 'pin') return changePIN();
     if (act === 'report') {
-      if (!S.rec) return;
+      if (!S.rec) return toast('Belum ada perangkat terdaftar di browser ini.');
       await api.reportLost(S.rec.deviceId);
       return toast('Perangkat dilaporkan hilang. Admin perlu mencabut sertifikatnya.', 'ok');
     }
@@ -376,7 +402,7 @@ $('acctMenu').addEventListener('click', async (e) => {
 });
 
 async function changePIN() {
-  if (!S.rec) return;
+  if (!S.rec) return toast('Belum ada kunci di browser ini. Kunci dibuat saat pertama kali menandatangani.');
   const got = await pinDialog({
     title: 'Ubah PIN', text: 'Kunci dibungkus ulang dengan PIN baru tanpa dibuka.', old: true, confirm: true,
     verify: async (pin, oldPin) => {
@@ -396,7 +422,8 @@ function clearOut() {
 }
 
 function resetSign() {
-  S.file = null; clearOut();
+  S.file = null; S.approval = null; clearOut();
+  $('btnRetryApproval').hidden = true;
   $('inName').textContent = 'Pilih berkas PDF…'; $('inName').classList.remove('fn');
   $('btnPlace').disabled = true;
   $('signMsg').textContent = ''; $('placeMsg').textContent = '';
@@ -534,7 +561,9 @@ $('btnAddStamp').addEventListener('click', () => {
   toast('Titik QR ditambahkan.', 'ok');
 });
 
-$('btnPlace').addEventListener('click', async () => {
+$('btnPlace').addEventListener('click', () => openPlacement());
+
+async function openPlacement() {
   $('signMsg').textContent = '';
   placeInit = ''; pdfDoc = null; savedStamps = []; refreshStampUI();
   screen('scPlace');
@@ -550,7 +579,7 @@ $('btnPlace').addEventListener('click', async () => {
     pdfDoc = null;
     $('qrHelp').textContent = 'Pratinjau gagal dimuat; QR akan ditaruh di kanan bawah halaman terakhir.';
   }
-});
+}
 
 $('btnSign').addEventListener('click', () => withBtn($('btnSign'), async () => {
   $('placeMsg').textContent = ''; $('signResult').hidden = true;
@@ -600,9 +629,11 @@ async function doSign() {
 
     step('Mengirim dokumen bertanda tangan…');
     let status = 'submitted';
+    let accepted = false;
     try {
       const sub = await api.submitDocument(res.public_id, out.signedPdf);
       status = sub.status || status;
+      accepted = sub.status === 'accepted';
       if (status === 'stored_unverified') status = 'tersimpan — TIDAK diverifikasi server (berkas besar); verifikasi manual lewat halaman verifikasi';
     } catch (e) { status = 'hanya lokal (unggah gagal: ' + e.message + ')'; }
 
@@ -611,6 +642,7 @@ async function doSign() {
     S.outUrl = URL.createObjectURL(new Blob([out.signedPdf], { type: 'application/pdf' }));
     showSignResult(res, status, name);
     toast('Berhasil ditandatangani.', 'ok');
+    if (S.approval) await finishApproval(res.public_id, accepted);
   } finally {
     pin = null; // the PIN is not kept past this operation
     $('qrHelp').textContent = 'Seret kotak QR ke kolom tanda tangan. Tarik titik sudut untuk ukuran.';
@@ -627,6 +659,52 @@ function showSignResult(res, status, fileName) {
   box.hidden = false;
 }
 
+// ---------- approving a request with a TTD signature ----------
+// The request's PDF is signed with the normal pipeline above (reserve -> server
+// stamp -> sign in the worker -> submit); then the resulting TTD public id is
+// reported to the office service, which checks it with the TTD server.
+async function startApproval(a) {
+  if (!(await ensureDevice())) return;
+  let bytes;
+  try { bytes = await office.downloadDoc(a.docId); } catch (e) { toast(friendly(e), 'bad'); return; }
+  try {
+    const n = await signer.call('listSignatures', { pdf: bytes.slice() }, { timeoutMs: 30000 });
+    if (n > 0) { toast('Lampiran sudah memiliki tanda tangan digital; tidak dapat ditandatangani lagi.', 'bad'); return; }
+  } catch (e) { toast(friendly(e), 'bad'); return; }
+  resetSign();
+  S.file = { name: a.fileName, bytes };
+  S.approval = { ...a, pid: null };
+  $('sreason').value = ('Persetujuan: ' + a.title).slice(0, 120);
+  openPlacement();
+}
+
+async function finishApproval(pid, accepted) {
+  const a = S.approval; a.pid = pid;
+  if (!accepted) {
+    $('placeMsg').textContent = 'Tanda tangan belum diterima server, persetujuan tidak dikirim.';
+    return;
+  }
+  try {
+    await office.decide(a.txId, { decision: 'approve', ttd_public_id: pid });
+    S.approval = null;
+    toast('Transaksi disetujui.', 'ok');
+    await officeUI.openTx(a.txId);
+    officeUI.refreshInboxCount();
+  } catch (e) {
+    $('placeMsg').textContent = friendly(e) + ' — tanda tangan sudah dibuat (ID ' + pid + '); klik “Kirim ulang persetujuan”.';
+    $('btnRetryApproval').hidden = false;
+  }
+}
+
+$('btnRetryApproval').addEventListener('click', () => withBtn($('btnRetryApproval'), async () => {
+  if (!S.approval || !S.approval.pid) return;
+  $('placeMsg').textContent = '';
+  $('btnRetryApproval').hidden = true;
+  await finishApproval(S.approval.pid, true);
+}));
+
+const officeUI = office.initOffice({ $, esc, toast, screen, friendly, withBtn, pickPDF, activatable, startApproval, showTTD });
+
 // ---------- verify (local, against the pinned Root CA) ----------
 function resetVerify() {
   $('vName').textContent = 'Pilih berkas PDF…'; $('vName').classList.remove('fn');
@@ -641,7 +719,8 @@ activatable($('pickVerify'), async () => {
     out.hidden = false; out.innerHTML = '<div class="hint">Memeriksa…</div>';
     let crlPEM = '';
     try { crlPEM = await api.crl(); } catch { /* verify without a CRL, the verdict says so */ }
-    const raw = await signer.call('verify', { pdf: f.bytes, rootPEM: S.rec.rootPEM, crlPEM }, { timeoutMs: 60000 });
+    const rootPEM = (S.rec && S.rec.rootPEM) || await api.rootCA(); // pinned root when this browser has a device
+    const raw = await signer.call('verify', { pdf: f.bytes, rootPEM, crlPEM }, { timeoutMs: 60000 });
     out.innerHTML = renderVerdict(raw);
   } catch (e) {
     out.hidden = false;

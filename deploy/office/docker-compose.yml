@@ -1,0 +1,100 @@
+# The integrated office app: TTD (login, signing, verification, browser client)
+# + the transaction ledger service, behind ONE origin.
+#
+#   docker compose up -d --build     # from this directory
+#   bash seed.sh                     # demo accounts (once per fresh volume)
+#   open http://localhost:18099/app/
+#
+# Browser -> ttd:8099 (/app, /api/v1, /office/*) ; /office/* is proxied to
+# ledger-api:8080 after the TTD server authenticates the session. ledger-api is
+# NOT published to the host: its Fase 1 endpoints have no authentication.
+#
+# Fabric is OFF by default (FABRIC_ENABLED=false): every business event is
+# hybrid-signed and queued in the outbox (outbox_event) for the ledger; the UI
+# shows "Ledger belum terhubung". Point ledger-api at a running Fabric network
+# and set FABRIC_ENABLED=true (see infra/docker-compose.yml for the env) to
+# drain the queue onto the chain.
+#
+# Secrets below are DEV defaults; override in .env (see .env.example).
+
+name: office
+
+services:
+  ttd-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pqc
+      POSTGRES_PASSWORD: "${TTD_DB_PASSWORD:-pqc}"
+      POSTGRES_DB: pqc
+    volumes: [ttd_pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U pqc"], interval: 5s, timeout: 3s, retries: 20 }
+
+  ledger-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: "${LEDGER_DB_PASSWORD:-ledger_dev_only}"
+      POSTGRES_DB: ledger
+    volumes: [ledger_pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U ledger"], interval: 5s, timeout: 5s, retries: 20 }
+
+  ledger-migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on: { ledger-db: { condition: service_healthy } }
+    volumes: ["../../migrations:/migrations:ro"]
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://ledger:${LEDGER_DB_PASSWORD:-ledger_dev_only}@ledger-db:5432/ledger?sslmode=disable"
+      - "up"
+    restart: "no"
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-ledger_admin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-ledger_dev_only}"
+    command: server /data
+    volumes: [minio_data:/data]
+    healthcheck: { test: ["CMD", "mc", "ready", "local"], interval: 5s, timeout: 5s, retries: 20 }
+
+  ledger-api:
+    build: { context: ../.., dockerfile: api/Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      ledger-migrate: { condition: service_completed_successfully }
+      minio: { condition: service_healthy }
+    environment:
+      LISTEN_ADDR: ":8080"
+      DATABASE_URL: "postgres://ledger:${LEDGER_DB_PASSWORD:-ledger_dev_only}@ledger-db:5432/ledger?sslmode=disable"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-ledger_admin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-ledger_dev_only}"
+      KEYSTORE_PATH: /keystore/dev-keystore.json
+      FABRIC_ENABLED: "${FABRIC_ENABLED:-false}"
+      OFFICE_PROXY_SECRET: "${OFFICE_SECRET:-dev-office-secret-change-me-0123456789}"
+      TTD_INTERNAL_URL: "http://ttd:8099"
+    volumes: [ledger_keystore:/keystore]
+
+  ttd:
+    build: { context: ../../ttd, dockerfile: deploy/local/Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      ttd-db: { condition: service_healthy }
+      ledger-api: { condition: service_started }
+    environment:
+      PQC_DATABASE_URL: "postgres://pqc:${TTD_DB_PASSWORD:-pqc}@ttd-db:5432/pqc?sslmode=disable"
+      PQC_JWT_SECRET: "${PQC_JWT_SECRET:-local-prototype-secret-change-me-0123456789}"
+      PQC_PUBLIC_BASE_URL: "${PQC_PUBLIC_BASE_URL:-http://localhost:18099}"
+      PQC_SUPERADMIN_USERNAME: "${PQC_SUPERADMIN_USERNAME:-superadmin}"
+      PQC_SUPERADMIN_PASSWORD: "${PQC_SUPERADMIN_PASSWORD:-superadmin12345}"
+      PQC_OBJECT_DIR: /objects
+      PQC_UPLOAD_DIR: /objects/_incoming
+      PQC_MAX_UPLOAD_MB: "1024"
+      PQC_OFFICE_UPSTREAM: "http://ledger-api:8080"
+      PQC_OFFICE_SECRET: "${OFFICE_SECRET:-dev-office-secret-change-me-0123456789}"
+    volumes: [ttd_ca:/ca, ttd_objects:/objects]
+    ports:
+      - "${PQC_APP_PORT:-18099}:8099"    # the app: /app/ + /admin + /api/v1 + /office
+      - "${PQC_VERIFY_PORT:-18098}:8098" # verification-only site (public)
+
+volumes: { ttd_pgdata: {}, ledger_pgdata: {}, minio_data: {}, ledger_keystore: {}, ttd_ca: {}, ttd_objects: {} }

@@ -168,13 +168,16 @@ try {
   section('login + enrollment (key generated in the browser)');
   await page.fill('#lpw', password);
   await page.click('#btnLogin');
+  await page.waitForSelector('#scHome.active', { timeout: 30000 });
+  check('login does not ask for a PIN (the key is created on first use)', !(await page.locator('#pinDlg[open]').count()));
+  await page.click('#goSign');
   await page.waitForSelector('#pinDlg[open]', { timeout: 30000 });
   await page.fill('#pin1', '123'); await page.fill('#pin2', '123'); await page.click('#pinOk');
   check('a PIN under 6 characters is refused', /minimal 6/.test(await page.textContent('#pinMsg')));
   await page.fill('#pin1', pin); await page.fill('#pin2', 'lain-sekali'); await page.click('#pinOk');
   check('mismatched PIN confirmation is refused', /tidak sama/.test(await page.textContent('#pinMsg')));
   await page.fill('#pin1', pin); await page.fill('#pin2', pin); await page.click('#pinOk');
-  await page.waitForFunction(() => /siap menandatangani/.test(document.getElementById('homeSub').textContent), null, { timeout: 90000 });
+  await page.waitForSelector('#scSign.active', { timeout: 90000 });
   check('device is certified and ready', true);
   await shot(page, '02-home');
   check('Root CA fingerprint is shown for pinning', /SHA-256\): [0-9a-f]{64}/.test(await page.textContent('#rootFp')));
@@ -201,7 +204,6 @@ try {
 
   // ---- sign ----
   section('sign a PDF');
-  await page.click('#goSign');
   const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#pickIn')]);
   await fc.setFiles(sample);
   await page.waitForFunction(() => !document.getElementById('btnPlace').disabled);
@@ -276,7 +278,10 @@ try {
   // ---- reload: the key must survive in IndexedDB; PIN change ----
   section('reload -> key persists; change PIN; sign again');
   await page.reload();
-  await page.waitForFunction(() => /siap menandatangani/.test(document.getElementById('homeSub').textContent), null, { timeout: 90000 });
+  await page.waitForSelector('#scHome.active', { timeout: 30000 });
+  await page.click('#goSign'); // loads the stored key: no PIN prompt, no new device
+  await page.waitForSelector('#scSign.active', { timeout: 90000 });
+  check('after reload the stored key is used without a PIN prompt', !(await page.locator('#pinDlg[open]').count()));
   check('after reload the same device is reused (no new key, no PIN-create prompt)', (await call('GET', '/api/v1/devices', { token: userTok })).data.devices.length === 1);
   await page.click('#acctBtn'); await page.click('[data-act=pin]');
   await page.waitForSelector('#pinDlg[open]');
@@ -287,7 +292,6 @@ try {
   await page.waitForFunction(() => !document.getElementById('pinDlg').open, null, { timeout: 30000 });
   check('PIN changed', true);
 
-  await page.click('#goSign');
   const [fc5] = await Promise.all([page.waitForEvent('filechooser'), page.click('#pickIn')]);
   await fc5.setFiles(sample);
   await page.waitForFunction(() => !document.getElementById('btnPlace').disabled);

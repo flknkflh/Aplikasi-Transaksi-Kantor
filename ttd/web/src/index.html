@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TTD Digital PQC</title>
+<title>Transaksi Kantor PQC</title>
 <link rel="stylesheet" href="app.css" />
 </head>
 <body>
 <header>
-  <div class="brand"><span class="dot"></span> TTD Digital PQC <span class="ver" id="verTag"></span></div>
+  <div class="brand"><span class="dot"></span> Transaksi Kantor PQC <span class="ver" id="verTag"></span></div>
   <div class="acct" id="acct" hidden>
     <button class="acct-btn" id="acctBtn" type="button"><span id="acctEmail"></span> ▾</button>
     <div class="acct-menu" id="acctMenu" hidden>
@@ -21,6 +21,13 @@
     </div>
   </div>
 </header>
+
+<nav class="nav" id="nav" hidden>
+  <button type="button" data-nav="tx">Transaksi</button>
+  <button type="button" data-nav="inbox" id="navInbox" hidden>Persetujuan <span class="count" id="inboxCount" hidden></span></button>
+  <button type="button" data-nav="ttd">Tanda tangan</button>
+  <button type="button" data-nav="roles" id="navRoles" hidden>Peran</button>
+</nav>
 
 <main>
   <div class="banner warn" id="insecure" hidden>
@@ -75,11 +82,73 @@
     </div>
   </section>
 
-  <!-- HOME -->
+  <!-- OFFICE: list -->
+  <section class="screen" id="scTx">
+    <h1>Transaksi kantor</h1>
+    <p class="sub">Peran Anda: <b id="txRole"></b>. Persetujuan dilakukan dengan tanda tangan digital pada PDF pengajuan.</p>
+    <div class="card">
+      <div class="toolbar">
+        <select id="txScope" aria-label="Tampilan"></select>
+        <select id="txStatus" aria-label="Status">
+          <option value="">Semua status</option><option value="DRAFT">Draf</option><option value="VERIFIED">Menunggu persetujuan</option>
+          <option value="ENDORSED">Disetujui</option><option value="COMMITTED">Selesai</option><option value="REJECTED">Ditolak</option><option value="CANCELLED">Dibatalkan</option>
+        </select>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="txNew">+ Buat pengajuan</button>
+      </div>
+      <div id="txList"></div>
+    </div>
+  </section>
+
+  <!-- OFFICE: new -->
+  <section class="screen" id="scTxNew">
+    <h1>Pengajuan baru</h1>
+    <p class="sub">Lampirkan PDF yang akan disetujui. Penyetuju akan menandatanganinya secara digital.</p>
+    <form class="card" id="txForm" autocomplete="off">
+      <label for="txTitle">Judul</label>
+      <input type="text" id="txTitle" maxlength="200" placeholder="mis. Pembelian ATK triwulan III" />
+      <label for="txCategory">Kategori</label>
+      <select id="txCategory">
+        <option value="pengadaan">Pengadaan</option><option value="perjalanan-dinas">Perjalanan dinas</option>
+        <option value="reimbursement">Reimbursement</option><option value="lainnya">Lainnya</option>
+      </select>
+      <label for="txAmount">Nominal (Rp)</label>
+      <input type="text" id="txAmount" inputmode="numeric" placeholder="1500000" />
+      <label for="txDesc">Keterangan</label>
+      <textarea id="txDesc" rows="3" maxlength="2000"></textarea>
+      <label>Lampiran PDF</label>
+      <div class="filepick" id="txPick" role="button" tabindex="0"><span>📄</span><span id="txFileName">Pilih lampiran PDF…</span></div>
+      <div class="row mt18">
+        <button type="button" class="btn" id="txSaveSend"><span class="spin"></span><span class="txt">Simpan &amp; kirim untuk persetujuan</span></button>
+        <button type="button" class="btn secondary" id="txSaveDraft"><span class="spin"></span><span class="txt">Simpan sebagai draf</span></button>
+        <button type="button" class="btn ghost" id="txNewBack">Batal</button>
+      </div>
+      <div class="msg" id="txNewMsg"></div>
+    </form>
+  </section>
+
+  <!-- OFFICE: detail -->
+  <section class="screen" id="scTxDetail">
+    <div class="card">
+      <div id="txDetail"></div>
+      <div class="row mt18" id="txActions"></div>
+      <div class="msg" id="txActMsg"></div>
+      <div class="mt14"><button type="button" class="btn ghost" id="txDetailBack">← Kembali ke daftar</button></div>
+    </div>
+  </section>
+
+  <!-- OFFICE: roles (admin) -->
+  <section class="screen" id="scRoles">
+    <h1>Peran pegawai</h1>
+    <p class="sub">Penyetuju dapat menyetujui/menolak pengajuan orang lain dengan tanda tangan TTD. Auditor hanya membaca.</p>
+    <div class="card"><div id="rolesBody"></div></div>
+  </section>
+
+  <!-- HOME (TTD hub) -->
   <section class="screen" id="scHome">
-    <h1>Halo 👋</h1>
-    <p class="sub" id="homeSub">Menyiapkan perangkat…</p>
-    <button type="button" class="action" id="goSign" disabled>
+    <h1>Tanda tangan digital</h1>
+    <p class="sub" id="homeSub">Kunci tanda tangan dibuat di browser ini saat pertama kali Anda menandatangani.</p>
+    <button type="button" class="action" id="goSign">
       <div class="ic">✍️</div>
       <div><div class="t">Tanda Tangani Dokumen</div><div class="d">Pilih PDF, tandatangani di browser ini, unduh hasilnya ber-QR</div></div>
     </button>
@@ -141,6 +210,7 @@
         <button type="button" class="btn secondary" id="placeBack">← Ganti berkas</button>
       </div>
       <div class="msg" id="placeMsg"></div>
+      <button type="button" class="btn secondary" id="btnRetryApproval" hidden><span class="spin"></span><span class="txt">Kirim ulang persetujuan</span></button>
       <div class="result" id="signResult" hidden></div>
     </div>
   </section>
@@ -184,6 +254,20 @@
     <div class="row mt14">
       <button type="submit" class="btn" id="pinOk"><span class="spin"></span><span class="txt">Lanjut</span></button>
       <button type="button" class="btn secondary" id="pinCancel">Batal</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- reason for a rejection -->
+<dialog id="reasonDlg">
+  <form method="dialog" id="reasonForm">
+    <h2>Tolak pengajuan</h2>
+    <p>Tuliskan alasan penolakan. Alasan tercatat di riwayat transaksi.</p>
+    <textarea id="reasonText" rows="4" maxlength="500"></textarea>
+    <div class="msg" id="reasonMsg"></div>
+    <div class="row mt14">
+      <button type="submit" class="btn">Tolak pengajuan</button>
+      <button type="button" class="btn secondary" id="reasonCancel">Batal</button>
     </div>
   </form>
 </dialog>
