@@ -64,3 +64,9 @@ research/pdfsigner/
 *.test
 *.prof
 .DS_Store
+
+# ---- browser client build output (embedded into the server; built by web/build.sh) ----
+server/internal/api/webapp/*
+!server/internal/api/webapp/.gitkeep
+web/node_modules/
+web/e2e/.artifacts/
