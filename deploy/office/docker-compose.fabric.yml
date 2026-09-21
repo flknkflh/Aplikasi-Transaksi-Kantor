@@ -1,0 +1,47 @@
+# Overlay that connects the office stack to the Fabric test network started by
+# network/bootstrap.sh (channel "ledgerchannel", chaincodes "transaction" and
+# "asset"). ledger-api then submits the outbox to the chain, and the indexer
+# listens for chaincode events and marks each event with its Fabric tx id and
+# block number (which the UI shows as "Tercatat di blok N").
+#
+#   docker compose -f docker-compose.yml -f docker-compose.fabric.yml up -d --build
+#
+# The Fabric containers live on the external Docker network "fabric_test"; the
+# identity/TLS material is the test network's Org1 User1 (dev only).
+
+x-fabric-env: &fabric-env
+  FABRIC_MSP_ID: Org1MSP
+  FABRIC_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts
+  FABRIC_KEY_PATH: /fabric/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore
+  FABRIC_TLS_CERT_PATH: /fabric/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+  FABRIC_PEER_ENDPOINT: dns:///peer0.org1.example.com:7051
+  FABRIC_GATEWAY_PEER: peer0.org1.example.com
+  FABRIC_CHANNEL_NAME: ledgerchannel
+
+services:
+  ledger-api:
+    environment:
+      <<: *fabric-env
+      FABRIC_ENABLED: "true"
+      # A Fabric outage longer than a few minutes must not dead-letter events (default is 8
+      # attempts, backoff capped at 60s): keep retrying for about a day.
+      OUTBOX_MAX_ATTEMPTS: "1500"
+    volumes:
+      - ../../network/vendor/fabric-samples/test-network/organizations:/fabric/organizations:ro
+    networks: [default, fabric_test]
+
+  indexer:
+    build: { context: ../.., dockerfile: indexer/Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      ledger-migrate: { condition: service_completed_successfully }
+    environment:
+      <<: *fabric-env
+      DATABASE_URL: "postgres://ledger:${LEDGER_DB_PASSWORD:-ledger_dev_only}@ledger-db:5432/ledger?sslmode=disable"
+    volumes:
+      - ../../network/vendor/fabric-samples/test-network/organizations:/fabric/organizations:ro
+    networks: [default, fabric_test]
+
+networks:
+  fabric_test:
+    external: true

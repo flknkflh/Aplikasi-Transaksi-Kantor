@@ -43,9 +43,10 @@ bash seed.sh                     # akun demo (pemohon@local, penyetuju@local, ..
 (cd ../../ttd/web/e2e && npm ci && node office.mjs)
 ```
 
-Status jujur: alur pengajuan → persetujuan TTD → selesai/tolak berjalan penuh dan teruji; jaringan
-Fabric **belum terhubung** pada stack ini (`FABRIC_ENABLED=false`): peristiwa tersimpan lengkap dan menunggu
-dicatat ke blockchain (UI menampilkan statusnya). Lihat batasan di ADR-0003.
+Status jujur: alur pengajuan → persetujuan TTD → selesai/tolak berjalan penuh dan teruji, **termasuk pencatatan
+ke blockchain Fabric** (jaringan uji 2-org; `network/bootstrap.sh` lalu overlay `docker-compose.fabric.yml`,
+lihat `deploy/office/README.md`). Tanpa Fabric, peristiwa tetap tersimpan dan mengantre (UI menampilkan statusnya).
+Batasan di ADR-0003: jaringan Fabric adalah jaringan uji dev, bukan produksi.
 
 ## TTD Digital (browser)
 

@@ -360,6 +360,16 @@ func TestOfficeHappyPathSubmitApproveWithTTDComplete(t *testing.T) {
 		t.Fatalf("cancel after commit must conflict, got %d", code)
 	}
 
+	_, done := h.json(&alice, "GET", "/transactions/"+id, nil)
+	seen := map[string]bool{}
+	for _, e := range done["events"].([]interface{}) {
+		hash := e.(map[string]interface{})["payload_hash"].(string)
+		if seen[hash] {
+			t.Fatalf("two different events share payload hash %s — the signed payload must identify the step", hash)
+		}
+		seen[hash] = true
+	}
+
 	// Every step is queued for the ledger in order, with the on-chain approval last-but-in-sequence.
 	rows, err := h.db.Query(context.Background(), `SELECT fn_name, status FROM outbox_event WHERE aggregate_id=$1 ORDER BY created_at`, id)
 	if err != nil {

@@ -98,7 +98,7 @@ try {
   check('role is shown', /Pemohon/.test(await req.page.textContent('#txRole')));
   await fileRequest(req.page, T1);
   check('the request is waiting for approval', /Menunggu persetujuan/.test(await detailStatus(req.page)));
-  check('the ledger state is shown honestly (Fabric not connected)', /Ledger belum terhubung/.test(await req.page.textContent('#txDetail')));
+  check('the ledger state is shown honestly', (process.env.E2E_FABRIC === '1' ? /Antre ke ledger|Tercatat di ledger/ : /Ledger belum terhubung/).test(await req.page.textContent('#txDetail')));
   check('timeline: created + submitted', (await req.page.locator('#txDetail .timeline li').count()) === 2);
   check('requester can cancel but cannot approve', (await req.page.getByRole('button', { name: 'Batalkan' }).count()) === 1
     && (await req.page.getByRole('button', { name: /Setujui/ }).count()) === 0);
@@ -226,9 +226,20 @@ try {
   check('an admin sees every transaction', /Semua transaksi/.test(await adm.page.locator('#txScope').innerText()));
 
   // ================= ledger queue =================
-  section('ledger queue');
-  const detail = (await api('GET', '/office/transactions/' + txId, { token: pemohonTok })).data;
-  check('events are signed and queued for the ledger, none lost', detail.events.length === 4 && detail.ledger.queued >= 4 && detail.ledger.dead === 0, JSON.stringify(detail.ledger));
+  section('ledger');
+  const FABRIC = process.env.E2E_FABRIC === '1';
+  const ledgerOf = async () => (await api('GET', '/office/transactions/' + txId, { token: pemohonTok })).data;
+  let detail = await ledgerOf();
+  if (FABRIC) {
+    // Fabric connected: the outbox drains onto the chain and the indexer marks each event with its block.
+    for (let i = 0; i < 40 && detail.ledger.state !== 'recorded'; i++) { await new Promise((r) => setTimeout(r, 2000)); detail = await ledgerOf(); }
+    check('every event of the completed request is recorded on the ledger', detail.ledger.state === 'recorded' && detail.events.every((e) => e.recorded_on_ledger), JSON.stringify(detail.ledger));
+    check('each event carries its Fabric block number', detail.events.every((e) => Number(e.fabric_block_number) > 0), JSON.stringify(detail.events.map((e) => e.fabric_block_number)));
+    check('nothing is dead-lettered', detail.ledger.dead === 0);
+    console.log('       txn ' + txId + ' -> blocks ' + detail.events.map((e) => e.fabric_block_number).join(', '));
+  } else {
+    check('events are signed and queued for the ledger, none lost', detail.events.length === 4 && detail.ledger.queued >= 4 && detail.ledger.dead === 0, JSON.stringify(detail.ledger));
+  }
   check('every event carries a payload hash', detail.events.every((e) => /^[0-9a-f]{64}$|^sha256:/.test(e.payload_hash) || e.payload_hash.length >= 32));
 
   section('browser health');

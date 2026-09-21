@@ -584,7 +584,13 @@ func (s *Server) simpleStep(w http.ResponseWriter, r *http.Request, eventType, n
 		func(ctx context.Context, tx pgx.Tx, me officeIdentity, createdBy string) (int, string) {
 			if _, err := s.appendTransactionEvent(ctx, tx, eventInput{
 				TransactionID: id, EventType: eventType, SignerIdentity: me.ID,
-				Payload:   map[string]interface{}{"actor": me.ID},
+				// The event type and transition are part of the signed payload:
+				// without them two different steps by one actor hash identically
+				// (SUBMITTED and COMPLETED did, on the ledger).
+				Payload: map[string]interface{}{
+					"actor": me.ID, "event_type": eventType, "new_status": newStatus,
+					"at": time.Now().UTC().Format(time.RFC3339Nano),
+				},
 				NewStatus: newStatus,
 			}, true); err != nil {
 				s.Logger.Error("office: step "+eventType, "error", err)

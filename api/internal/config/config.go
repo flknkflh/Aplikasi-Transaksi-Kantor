@@ -5,7 +5,10 @@
 // docs/adr/0001-fase1-spike-scope.md.
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	// HTTP server
@@ -80,13 +83,21 @@ func Load() Config {
 		TTDInternalURL:    getEnv("TTD_INTERNAL_URL", "http://localhost:8099"),
 
 		OutboxPollInterval: getEnv("OUTBOX_POLL_INTERVAL", "2s"),
-		OutboxMaxAttempts:  8,
+		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 8),
 	}
 }
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+// getEnvInt reads a positive integer; anything else falls back.
+func getEnvInt(key string, fallback int) int {
+	if n, err := strconv.Atoi(os.Getenv(key)); err == nil && n > 0 {
+		return n
 	}
 	return fallback
 }

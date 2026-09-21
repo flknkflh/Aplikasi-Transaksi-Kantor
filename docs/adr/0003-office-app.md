@@ -46,11 +46,25 @@ with no UI. The requirement is *one* application for office transactions in whic
 7. **Devices/keys are created lazily**: a requester never has to make a PIN; the key
    is created the first time someone signs or approves.
 
+## Fabric (added 2026-09-21)
+
+The stack now runs against a live Fabric 2.5 test network (`network/bootstrap.sh`, run in
+WSL; overlay `deploy/office/docker-compose.fabric.yml` adds `FABRIC_ENABLED=true` and the
+indexer). Verified end to end: requests are drained from the outbox onto chaincode
+`transaction` (`CreateTransaction`, `RecordEvent`, `Approve`), the indexer stamps each
+event with its Fabric block, the UI flips from "Antre ke ledger" to "Tercatat di ledger",
+and `network/query-transaction.sh` reads the same status, hash chain and signatures
+directly from the peer. Two fixes were needed to make the bootstrap work: the stock
+chaincode builder image has Go 1.26.4 (the chaincode needs >= 1.26.7), so `network/ccenv`
+derives one with Go 1.27; and `go mod vendor` must run with `GOWORK=off`.
+A bug this exposed: `SUBMITTED` and `COMPLETED` had identical signed payloads (and thus
+identical hashes); the payload now includes the event type, transition and time.
+
 ## Consequences / limits
 
-- **Not yet proven on a live Fabric network.** The outbox → chaincode path is
-  unchanged Fase 1 code and was not exercised end-to-end here; what is verified is
-  that events are correctly signed, chained, ordered and queued.
+- **Fabric is a single-org dev test network** (Org1 User1 identity, no HA, TLS material on
+  disk), not a production ledger. The chain enforces the state machine and the hash chain
+  linkage but, per ADR-0001, does not verify the hybrid signatures itself.
 - Event signatures still come from the server-side dev keystore (ADR-0001, decision 4);
   only the *document approval* signature is made on the user's device.
 - The approver signs the PDF **they downloaded** from the request. The ledger checks
