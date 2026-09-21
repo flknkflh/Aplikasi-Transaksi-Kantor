@@ -62,11 +62,11 @@ IP_HINT="$(command -v powershell >/dev/null 2>&1 && powershell -NoProfile -Comma
 cat <<EOF
 
   ┌────────────────────────────────────────────────────────────────
-  │  ADMIN CONSOLE  ->  http://$IP_HINT:8099/admin
+  │  ADMIN CONSOLE  ->  http://$IP_HINT:${BASE/admin
   │    email / password : admin@local / admin12345
   │
   │  APP (browser)  ->  /app/  (layar Masuk)
-  │    Alamat           : http://$IP_HINT:8099/app/
+  │    Alamat           : http://$IP_HINT:${BASE/app/
   │    email / password : user@local / user12345
 
   └────────────────────────────────────────────────────────────────
