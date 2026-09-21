@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TTD Digital PQC</title>
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span> TTD Digital PQC <span class="ver" id="verTag"></span></div>
+  <div class="acct" id="acct" hidden>
+    <button class="acct-btn" id="acctBtn" type="button"><span id="acctEmail"></span> ▾</button>
+    <div class="acct-menu" id="acctMenu" hidden>
+      <button type="button" data-act="history">Riwayat tanda tangan</button>
+      <button type="button" data-act="pin">Ubah PIN</button>
+      <button type="button" data-act="report">Laporkan perangkat hilang</button>
+      <button type="button" data-act="reset" class="danger">Reset perangkat ini</button>
+      <hr>
+      <button type="button" data-act="logout">Keluar</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="banner warn" id="insecure" hidden>
+    Halaman ini dibuka lewat HTTP biasa (bukan HTTPS/localhost). Kunci tetap dilindungi PIN,
+    tetapi lapisan pengikat perangkat WebCrypto tidak tersedia. Untuk penggunaan sungguhan, akses lewat HTTPS.
+  </div>
+  <div class="banner bad" id="fatal" hidden></div>
+
+  <!-- AUTH -->
+  <section class="screen active" id="scAuth">
+    <h1>Masuk</h1>
+    <p class="sub">Tanda tangan digital pasca-kuantum (ML-DSA-65) untuk dokumen PDF, langsung di browser.</p>
+    <div class="tabs">
+      <button type="button" id="tabLogin" class="on">Masuk</button>
+      <button type="button" id="tabReg">Daftar akun</button>
+      <button type="button" id="tabVerify">Verifikasi</button>
+    </div>
+
+    <form class="card" id="paneLogin" autocomplete="on">
+      <label for="lemail">Email</label>
+      <input type="text" id="lemail" autocomplete="username" placeholder="nama@instansi.go.id" />
+      <label for="lpw">Kata sandi</label>
+      <input type="password" id="lpw" autocomplete="current-password" />
+      <div class="mt18"><button class="btn block" id="btnLogin" type="submit"><span class="spin"></span><span class="txt">Masuk</span></button></div>
+      <div class="msg" id="loginMsg"></div>
+    </form>
+
+    <form class="card" id="paneReg" autocomplete="on" hidden>
+      <label for="rname">Nama lengkap <span class="faint">(dengan gelar)</span></label>
+      <input type="text" id="rname" placeholder="mis. Gita Aurora, S.Ap., M.P.A." />
+      <label for="rpos">Jabatan</label>
+      <input type="text" id="rpos" placeholder="mis. Plt. Asisten Deputi …" />
+      <label for="rnip">NIP</label>
+      <input type="text" id="rnip" placeholder="18 digit" />
+      <label for="rorg">Instansi / unit</label>
+      <input type="text" id="rorg" placeholder="Nama instansi / unit kerja" />
+      <label for="remail">Email</label>
+      <input type="text" id="remail" autocomplete="username" />
+      <label for="rpw">Kata sandi <span class="faint">(min. 8 karakter)</span></label>
+      <input type="password" id="rpw" autocomplete="new-password" />
+      <div class="mt18"><button class="btn block" id="btnReg" type="submit"><span class="spin"></span><span class="txt">Daftar</span></button></div>
+      <div class="msg" id="regMsg"></div>
+      <p class="hint">Akun perlu disetujui admin sebelum bisa dipakai.</p>
+    </form>
+
+    <div class="card" id="paneVerify" hidden>
+      <p class="hint mt0">Verifikasi terbuka untuk umum — tidak perlu akun.</p>
+      <div class="filepick mt14" id="vpPick" role="button" tabindex="0">
+        <span>📄</span><span id="vpName">Pilih berkas PDF…</span>
+      </div>
+      <div class="result" id="vpResult" hidden></div>
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section class="screen" id="scHome">
+    <h1>Halo 👋</h1>
+    <p class="sub" id="homeSub">Menyiapkan perangkat…</p>
+    <button type="button" class="action" id="goSign" disabled>
+      <div class="ic">✍️</div>
+      <div><div class="t">Tanda Tangani Dokumen</div><div class="d">Pilih PDF, tandatangani di browser ini, unduh hasilnya ber-QR</div></div>
+    </button>
+    <button type="button" class="action" id="goVerify">
+      <div class="ic">🔍</div>
+      <div><div class="t">Verifikasi Dokumen</div><div class="d">Periksa keaslian &amp; keutuhan sebuah PDF bertanda tangan</div></div>
+    </button>
+    <button type="button" class="action" id="goHistory">
+      <div class="ic">🗂️</div>
+      <div><div class="t">Riwayat</div><div class="d">Dokumen yang pernah Anda tandatangani</div></div>
+    </button>
+    <p class="note" id="homeNote"></p>
+    <p class="note mono" id="rootFp"></p>
+  </section>
+
+  <!-- SIGN (pick) -->
+  <section class="screen" id="scSign">
+    <h1>Tanda tangani dokumen</h1>
+    <p class="sub">Berkas asli tidak meninggalkan browser kecuali untuk digambari QR oleh server. Kunci privat tidak pernah dikirim.</p>
+    <div class="card">
+      <div class="filepick" id="pickIn" role="button" tabindex="0">
+        <span>📄</span><span id="inName">Pilih berkas PDF…</span>
+      </div>
+      <label for="sreason">Alasan penandatanganan</label>
+      <input type="text" id="sreason" value="Persetujuan" />
+      <label for="splace">Dikeluarkan di (kota)</label>
+      <input type="text" id="splace" placeholder="mis. Jakarta" />
+      <div class="row mt18">
+        <button type="button" class="btn" id="btnPlace" disabled><span class="txt">Atur posisi QR →</span></button>
+        <button type="button" class="btn secondary" id="signBack">Kembali</button>
+      </div>
+      <div class="msg" id="signMsg"></div>
+    </div>
+  </section>
+
+  <!-- SIGN (place QR) -->
+  <section class="screen" id="scPlace">
+    <h1>Letakkan QR tanda tangan</h1>
+    <p class="sub">Seret kotak QR ke kolom tanda tangan. Tarik titik di sudut untuk mengatur ukuran.</p>
+    <div class="card">
+      <div class="qr-nav">
+        <button id="qrPrev" type="button">‹</button>
+        <span>Halaman</span>
+        <input id="qrPageInput" type="number" min="1" value="1" />
+        <span>/ <span id="qrPageTotal">1</span></span>
+        <button id="qrNext" type="button">›</button>
+      </div>
+      <div class="qr-scroll">
+        <div class="qr-stage" id="qrStage">
+          <canvas id="qrCanvas"></canvas>
+          <div class="qr-box" id="qrBox"><span class="lbl">TTD Elektronik</span><span class="hdl" id="qrHandle"></span></div>
+        </div>
+      </div>
+      <p class="qr-help" id="qrHelp">Memuat pratinjau…</p>
+      <p class="qr-help">Titik QR: <b id="stampCount">1</b>
+        <button class="btn secondary sm" id="btnAddStamp" type="button">+ Tambah titik QR</button></p>
+      <div class="row mt14">
+        <button type="button" class="btn" id="btnSign"><span class="spin"></span><span class="txt">Tandatangani &amp; simpan</span></button>
+        <button type="button" class="btn secondary" id="placeBack">← Ganti berkas</button>
+      </div>
+      <div class="msg" id="placeMsg"></div>
+      <div class="result" id="signResult" hidden></div>
+    </div>
+  </section>
+
+  <!-- VERIFY -->
+  <section class="screen" id="scVerify">
+    <h1>Verifikasi dokumen</h1>
+    <p class="sub">Pemeriksaan kriptografis penuh dijalankan di browser ini terhadap Root CA yang Anda percayai.</p>
+    <div class="card">
+      <div class="filepick" id="pickVerify" role="button" tabindex="0">
+        <span>📄</span><span id="vName">Pilih berkas PDF…</span>
+      </div>
+      <div class="mt14"><button type="button" class="btn secondary" id="verifyBack">Kembali</button></div>
+      <div class="result" id="verifyResult" hidden></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="screen" id="scHistory">
+    <h1>Riwayat</h1>
+    <p class="sub">Tanda tangan yang tercatat di server untuk akun Anda.</p>
+    <div class="card">
+      <div id="histBody"><p class="hint mt0">Memuat…</p></div>
+      <div class="mt14"><button type="button" class="btn secondary" id="histBack">Kembali</button></div>
+    </div>
+  </section>
+</main>
+
+<!-- PIN dialog: create (with confirmation) or enter -->
+<dialog id="pinDlg">
+  <form method="dialog" id="pinForm" autocomplete="off">
+    <h2 id="pinTitle">PIN</h2>
+    <p id="pinText"></p>
+    <label for="pinOld" id="pinOldLbl">PIN saat ini</label>
+    <input type="password" id="pinOld" autocomplete="off" />
+    <label for="pin1" id="pin1Lbl">PIN</label>
+    <input type="password" id="pin1" autocomplete="off" />
+    <label for="pin2" id="pin2Lbl">Ulangi PIN</label>
+    <input type="password" id="pin2" autocomplete="off" />
+    <div class="msg" id="pinMsg"></div>
+    <div class="row mt14">
+      <button type="submit" class="btn" id="pinOk"><span class="spin"></span><span class="txt">Lanjut</span></button>
+      <button type="button" class="btn secondary" id="pinCancel">Batal</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="vendor/pdf.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -166,6 +166,38 @@ func main() {
 			}
 			return toUint8Array(out), nil
 		}),
+
+		"sha512Hex": promise(func(a []js.Value) (any, error) {
+			data, err := bytesArg(a, 0)
+			if err != nil {
+				return nil, err
+			}
+			return webbridge.SHA512Hex(data), nil
+		}),
+
+		"certFingerprint": promise(func(a []js.Value) (any, error) {
+			pem, err := stringArg(a, 0)
+			if err != nil {
+				return nil, err
+			}
+			return webbridge.CertFingerprint([]byte(pem))
+		}),
+
+		"checkDeviceCertificate": promise(func(a []js.Value) (any, error) {
+			pem, err := stringArg(a, 0)
+			if err != nil {
+				return nil, err
+			}
+			return webbridge.CheckDeviceCertificate([]byte(pem))
+		}),
+
+		"listSignatures": promise(func(a []js.Value) (any, error) {
+			pdf, err := bytesArg(a, 0)
+			if err != nil {
+				return nil, err
+			}
+			return webbridge.ListSignatures(pdf)
+		}),
 	}
 
 	js.Global().Set("pqcsign", js.ValueOf(api))

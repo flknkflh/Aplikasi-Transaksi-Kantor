@@ -23,6 +23,7 @@ import (
 
 	"example.internal/pqc-pdf-sign/core/certutil"
 	"example.internal/pqc-pdf-sign/core/enrollment"
+	"example.internal/pqc-pdf-sign/core/hashutil"
 	"example.internal/pqc-pdf-sign/core/keys"
 	"example.internal/pqc-pdf-sign/core/signing"
 	"example.internal/pqc-pdf-sign/core/verification"
@@ -137,4 +138,40 @@ func PINError(err error) string {
 		return "unsupported"
 	}
 	return ""
+}
+
+// SHA512Hex returns the lowercase hex SHA-512 used throughout V1
+// (hashutil.CalculateSHA512). The browser computes document hashes here rather
+// than with crypto.subtle because SubtleCrypto only exists in secure contexts
+// (HTTPS or localhost) and a lab server is often reached over plain HTTP.
+func SHA512Hex(b []byte) string { return hashutil.CalculateSHA512(b) }
+
+// CertFingerprint returns the hex SHA-256 fingerprint of the first certificate
+// in certPEM — what a user compares out of band to pin the Root CA.
+func CertFingerprint(certPEM []byte) (string, error) {
+	c, err := certutil.ParseCertificatePEM(certPEM)
+	if err != nil {
+		return "", err
+	}
+	return certutil.FingerprintSHA256(c), nil
+}
+
+// CheckDeviceCertificate enforces the V1 device-certificate profile (ML-DSA
+// key, currently valid, not a CA, document-signing EKU) and returns the
+// display-safe certutil.CertInfo as JSON.
+func CheckDeviceCertificate(certPEM []byte) (string, error) {
+	_, info, err := certutil.ParseAndValidateCertificate(certPEM, time.Now())
+	if err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(info)
+	return string(out), err
+}
+
+// ListSignatures reports how many signatures a PDF already carries. The client
+// refuses to sign a document twice (one document, one signature — upstream
+// Rencana V1 §15.3).
+func ListSignatures(pdf []byte) (int, error) {
+	sigs, err := verification.ListPDFSignatures(pdf)
+	return len(sigs), err
 }

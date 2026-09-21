@@ -197,3 +197,62 @@ func TestSignRejectsBadOptionsAndGarbagePDF(t *testing.T) {
 		t.Fatal("a non-PDF must be refused")
 	}
 }
+
+func TestSHA512HexMatchesTheKnownVector(t *testing.T) {
+	// SHA-512("abc") — FIPS 180-4 example.
+	const want = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+	if got := webbridge.SHA512Hex([]byte("abc")); got != want {
+		t.Fatalf("SHA512Hex = %s", got)
+	}
+}
+
+func TestCertificateHelpers(t *testing.T) {
+	f := newFixture(t)
+
+	fp, err := webbridge.CertFingerprint(f.rootPEM)
+	if err != nil || len(fp) != 64 {
+		t.Fatalf("root fingerprint: %q %v", fp, err)
+	}
+	if fp2, _ := webbridge.CertFingerprint(f.rootPEM); fp2 != fp {
+		t.Fatal("fingerprint must be stable")
+	}
+	other := newFixture(t)
+	if fpo, _ := webbridge.CertFingerprint(other.rootPEM); fpo == fp {
+		t.Fatal("different roots must have different fingerprints")
+	}
+	if _, err := webbridge.CertFingerprint([]byte("nope")); err == nil {
+		t.Fatal("garbage must be refused")
+	}
+
+	// The device certificate (first block of the chain) satisfies the V1 profile.
+	infoJSON, err := webbridge.CheckDeviceCertificate(f.chainPEM)
+	if err != nil {
+		t.Fatalf("CheckDeviceCertificate: %v", err)
+	}
+	var info struct {
+		Subject string `json:"subject"`
+		IsCA    bool   `json:"is_ca"`
+		EKU     bool   `json:"has_document_signing_eku"`
+	}
+	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil || info.IsCA || !info.EKU || !strings.Contains(info.Subject, "Browser User") {
+		t.Fatalf("unexpected cert info: %v %s", err, infoJSON)
+	}
+	// A CA certificate is not a device certificate.
+	if _, err := webbridge.CheckDeviceCertificate(f.rootPEM); err == nil {
+		t.Fatal("a CA certificate must be refused as a device certificate")
+	}
+}
+
+func TestListSignaturesCountsExistingSignatures(t *testing.T) {
+	f := newFixture(t)
+	if n, err := webbridge.ListSignatures(testpdf.Sample()); err != nil || n != 0 {
+		t.Fatalf("unsigned PDF: n=%d err=%v", n, err)
+	}
+	signed, _, err := webbridge.SignPDF(testpdf.Sample(), f.keyDER, f.chainPEM, `{"public_id":"sig_l"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := webbridge.ListSignatures(signed); err != nil || n != 1 {
+		t.Fatalf("signed PDF: n=%d err=%v", n, err)
+	}
+}

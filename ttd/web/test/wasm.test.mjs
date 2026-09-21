@@ -139,3 +139,27 @@ test('signPDF refuses a non-PDF and malformed options', async () => {
   const e2 = await rejection(api.signPDF(new Uint8Array([1, 2, 3]), key, 'x', '{bad json'));
   assert.match(e2.message, /options/i);
 });
+
+test('sha512Hex, certFingerprint, checkDeviceCertificate and listSignatures work in wasm', async () => {
+  assert.equal(await api.sha512Hex(enc.encode('abc')),
+    'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f');
+
+  const key = await api.generateKey();
+  const csr = await api.createCSR(key, JSON.stringify({ common_name: 'x', platform: 'web' }));
+  const issued = spawnSync('go', ['run', './cmd/labissue'], {
+    cwd: path.join(ttd, 'core'), input: csr, env: { ...process.env, GOWORK: 'off' }, encoding: 'utf8',
+  });
+  assert.equal(issued.status, 0, issued.stderr);
+  const { root_pem: rootPEM, chain_pem: chainPEM } = JSON.parse(issued.stdout);
+
+  assert.equal((await api.certFingerprint(rootPEM)).length, 64);
+  const info = JSON.parse(await api.checkDeviceCertificate(chainPEM));
+  assert.equal(info.is_ca, false);
+  assert.equal(info.has_document_signing_eku, true);
+  assert.equal((await rejection(api.checkDeviceCertificate(rootPEM))).message.length > 0, true);
+
+  const pdf = new Uint8Array(readFileSync(path.join(ttd, 'tests', 'fixtures', 'sample.pdf')));
+  assert.equal(await api.listSignatures(pdf), 0);
+  const { signedPdf } = await api.signPDF(pdf, key, chainPEM, '{"public_id":"sig_list"}');
+  assert.equal(await api.listSignatures(signedPdf), 1);
+});
