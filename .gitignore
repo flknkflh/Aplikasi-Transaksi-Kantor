@@ -28,3 +28,6 @@ network/config/channel-artifacts/
 Thumbs.db
 .vscode/
 .idea/
+
+# Backup archives (encrypted, but still real production data — never committed)
+deploy/office/backups/

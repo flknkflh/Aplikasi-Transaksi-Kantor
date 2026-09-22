@@ -1,0 +1,100 @@
+version: 2
+
+# One entry per go.mod in the workspace (see /go.work), the e2e test's npm
+# deps, every Dockerfile's base image, and the workflow files themselves.
+# Weekly, grouped into one PR per ecosystem+directory so this doesn't turn
+# into 30 separate PRs every Monday. Pairs with the govulncheck workflow
+# (.github/workflows/dependency-audit.yml), which is what actually blocks a
+# merge — Dependabot here is the "tell me before I have to go looking" half.
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/crypto"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/api"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/audit-service"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/indexer"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/chaincode/asset"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/chaincode/transaction"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/ttd/core"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/ttd/server"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "gomod"
+    directory: "/ttd/tools/ca-admin"
+    schedule: { interval: "weekly" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "npm"
+    directory: "/ttd/web/e2e"
+    schedule: { interval: "weekly" }
+    groups:
+      npm-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "docker"
+    directory: "/api"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/audit-service"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/indexer"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/network/ccenv"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/ttd/deploy/lab"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/ttd/deploy/local"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/office" # docker-compose.yml + .fabric.yml: postgres/minio/etc image tags
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }

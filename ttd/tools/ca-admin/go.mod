@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	example.internal/pqc-pdf-sign/core v0.0.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.57.0
 )
 
 require (
@@ -15,8 +15,8 @@ require (
 	github.com/mattetti/filebuffer v1.0.1 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	golang.org/x/image v0.45.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 )
 
 replace example.internal/pqc-pdf-sign/core => ../../core

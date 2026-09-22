@@ -1,0 +1,63 @@
+name: Dependency audit (govulncheck)
+
+# Runs govulncheck against every Go module in the workspace: on every push/PR
+# that could change dependencies, and once a week on its own so a newly
+# published CVE is caught even if nobody touches the code that week.
+# See docs/adr/0006-dependency-and-backup-hygiene.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/*.go"
+      - ".github/workflows/dependency-audit.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/*.go"
+      - ".github/workflows/dependency-audit.yml"
+  schedule:
+    - cron: "0 3 * * 1" # every Monday 03:00 UTC — catches CVEs published with no code change
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck / ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every go.mod in the repo (chaincode modules build fine from their
+        # committed vendor/ directories; GOWORK=off scans each module on its
+        # own instead of as one workspace, which is what the vuln DB expects).
+        module:
+          - crypto
+          - api
+          - audit-service
+          - indexer
+          - chaincode/asset
+          - chaincode/transaction
+          - ttd/core
+          - ttd/server
+          - ttd/tools/ca-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "${{ matrix.module }}/go.mod"
+
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

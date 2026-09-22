@@ -13,8 +13,9 @@ bash seed.sh
 | What | URL | Login |
 |---|---|---|
 | Web app (send / archive) | http://localhost:18099/app/ | sender: `pengirim.a@local` / `pengirim12345` (Kantor Cabang A), `pengirim.b@local` (B); `baru@local` = approved but no office yet |
-| Central admin (archive console) | same page | `admin@local` / `admin12345` or `superadmin` / `superadmin12345` |
-| Account approval | http://localhost:18099/admin | same admin logins |
+| Central admin (archive console) | same page | `admin@local` / `admin12345` (demo bootstrap admin) |
+| Super admin (creates/manages admins only) | http://localhost:18099/superadmin/ | auto-created on first start; see [ADR-0005](../../docs/adr/0005-superadmin-login.md) — password printed ONCE in `docker compose logs ttd \| grep "SUPER ADMIN"` |
+| Account approval | http://localhost:18099/admin | same admin login |
 | Public receipt check | http://localhost:18099/app/#r=<receipt number> or http://localhost:18098 | none |
 
 A sender only sees the upload screen and their own receipt. The admin sees every office's uploads, can verify
@@ -38,3 +39,6 @@ signing keys at rest — change it and keep it safe; losing it loses the keys).
 - `docker compose down` keeps data; `down -v` wipes it (then run `seed.sh` again).
 - Change every secret (`.env.example`) before exposing this anywhere; `/internal/office/*` is on the public
   port (secret-guarded) — do not route `/internal/` through a public reverse proxy.
+- Back up before you need to: [`backup/`](backup/) dumps both databases, the encrypted keystore, MinIO's
+  files, the CA and the legacy object store into one encrypted archive, and `backup/verify-restore.sh` proves
+  a given backup actually restores (into a throwaway project, never the live stack). See [BACKUP.md](BACKUP.md).
