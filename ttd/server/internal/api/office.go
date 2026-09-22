@@ -51,7 +51,7 @@ func (s *Server) mountOffice(mux *http.ServeMux) {
 		r.Host = target.Host
 	}
 
-	mux.HandleFunc("/office/", s.user(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/office/", s.user(s.limit(s.rlOffice, byAccount, func(w http.ResponseWriter, r *http.Request) {
 		c := claims(r)
 		acc, err := s.st.Account(c.Sub)
 		if err != nil || acc.Status != store.AccountActive {
@@ -82,7 +82,7 @@ func (s *Server) mountOffice(mux *http.ServeMux) {
 		// Uploads arrive in 8 MiB chunks (archive protocol); the ledger service enforces its own caps.
 		r.Body = http.MaxBytesReader(w, r.Body, 72<<20)
 		proxy.ServeHTTP(w, r)
-	}))
+	})))
 
 	// Anonymous, read-only routes into the ledger service: a receipt check (the receipt
 	// id is an unguessable capability) and one-time download tickets minted for an

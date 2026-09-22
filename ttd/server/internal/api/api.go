@@ -89,10 +89,19 @@ type RateLimits struct {
 	ReservePerAccount int
 	SubmitPerAccount  int
 	VerifyPerIP       int
+	RegisterPerIP     int // POST /api/v1/auth/register — unauthenticated, abuse-prone
+	OfficePerAccount  int // everything behind /office/* (archive upload + admin console)
 }
 
 func defaultRateLimits() RateLimits {
-	return RateLimits{LoginPerIP: 10, ReservePerAccount: 60, SubmitPerAccount: 30, VerifyPerIP: 30}
+	return RateLimits{
+		LoginPerIP: 10, ReservePerAccount: 60, SubmitPerAccount: 30, VerifyPerIP: 30,
+		RegisterPerIP: 5,
+		// Generous enough that a fast connection sending 8 MiB archive chunks back
+		// to back isn't throttled (~150 Mbps sustained at this cap), while still
+		// capping a runaway script or retry loop far below that.
+		OfficePerAccount: 120,
+	}
 }
 
 // Store is everything the handlers need from persistence. Both
@@ -150,12 +159,16 @@ type Server struct {
 	// The super admin logs in through a separate mechanism whose tokens use their own
 	// keys (superadmin.go): a step token (password ok, code pending) and the session token.
 	saStep, saAccess *auth.Signer
-	cfg              Config
-	crl              []byte // mutable copy of cfg.CRLPEM
-	issuer           string
-	uploads          *uploadManager
+	// adminMFAStep signs the short-lived "password ok, TOTP code next" challenge for an
+	// ordinary admin who has opted into TOTP (adminsecurity.go, docs/adr/0007). A
+	// separate key from saStep so the two step tokens can never be swapped.
+	adminMFAStep *auth.Signer
+	cfg          Config
+	crl          []byte // mutable copy of cfg.CRLPEM
+	issuer       string
+	uploads      *uploadManager
 
-	rlLogin, rlReserve, rlSubmit, rlVerify *limiterSet
+	rlLogin, rlReserve, rlSubmit, rlVerify, rlRegister, rlOffice *limiterSet
 }
 
 func New(st Store, cfg Config) (*Server, error) {
@@ -201,18 +214,21 @@ func New(st Store, cfg Config) (*Server, error) {
 		return newLimiterSet(perMin)
 	}
 	s := &Server{
-		st:        st,
-		signer:    auth.NewSigner(cfg.JWTSecret, cfg.AccessTTL),
-		cfg:       cfg,
-		crl:       cfg.CRLPEM,
-		issuer:    issuer,
-		uploads:   newUploadManager(cfg.UploadDir),
-		rlLogin:   mk(rl.LoginPerIP),
-		rlReserve: mk(rl.ReservePerAccount),
-		rlSubmit:  mk(rl.SubmitPerAccount),
-		rlVerify:  mk(rl.VerifyPerIP),
+		st:         st,
+		signer:     auth.NewSigner(cfg.JWTSecret, cfg.AccessTTL),
+		cfg:        cfg,
+		crl:        cfg.CRLPEM,
+		issuer:     issuer,
+		uploads:    newUploadManager(cfg.UploadDir),
+		rlLogin:    mk(rl.LoginPerIP),
+		rlReserve:  mk(rl.ReservePerAccount),
+		rlSubmit:   mk(rl.SubmitPerAccount),
+		rlVerify:   mk(rl.VerifyPerIP),
+		rlRegister: mk(rl.RegisterPerIP),
+		rlOffice:   mk(rl.OfficePerAccount),
 	}
 	s.initSuperAdminSigners()
+	s.initAdminMFASigner()
 	s.ensureSuperAdmin()
 	s.ensureBootstrapAdmin()
 	return s, nil
@@ -231,8 +247,9 @@ func randToken(n int) string {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /api/v1/auth/register", s.hRegister)
+	mux.HandleFunc("POST /api/v1/auth/register", s.limit(s.rlRegister, byIP, s.hRegister))
 	mux.HandleFunc("POST /api/v1/auth/login", s.limit(s.rlLogin, byIP, s.hLogin))
+	mux.HandleFunc("POST /api/v1/auth/login/totp", s.limit(s.rlLogin, byIP, s.hLoginTOTP))
 	mux.HandleFunc("POST /api/v1/devices", s.user(s.hCreateDevice))
 	mux.HandleFunc("GET /api/v1/devices", s.user(s.hListDevices))
 	mux.HandleFunc("POST /api/v1/devices/{device_id}/csr", s.user(s.hSubmitCSR))
@@ -261,6 +278,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/public/ca/crl.pem", s.pem(func() []byte { return s.crl }))
 
 	mux.HandleFunc("GET /api/v1/admin/capabilities", s.admin(s.hCapabilities))
+
+	// Opt-in TOTP for an ordinary admin's OWN account (adminsecurity.go, docs/adr/0007).
+	// Self-service only — an admin can turn this on/off for themselves; the failed-login
+	// lockout in hLogin is unconditional and does not depend on any of this.
+	mux.HandleFunc("GET /api/v1/admin/security/status", s.admin(s.hAdminSecurityStatus))
+	mux.HandleFunc("POST /api/v1/admin/security/totp/begin", s.admin(s.hAdminTOTPBegin))
+	mux.HandleFunc("POST /api/v1/admin/security/totp/confirm", s.admin(s.hAdminTOTPConfirm))
+	mux.HandleFunc("POST /api/v1/admin/security/totp/disable", s.admin(s.hAdminTOTPDisable))
 
 	// Admin accounts are managed ONLY through the separate super-admin login (superadmin.go).
 	s.mountSuperAdmin(mux)

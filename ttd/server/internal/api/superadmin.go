@@ -488,5 +488,8 @@ func (s *Server) mountSuperAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/superadmin/admins", s.superadmin(s.hCreateAdmin))
 	mux.HandleFunc("PATCH /api/v1/superadmin/admins/{id}", s.superadmin(s.hUpdateAdmin))
 	mux.HandleFunc("DELETE /api/v1/superadmin/admins/{id}", s.superadmin(s.hDeleteAdmin))
+	// Recovery: an admin locked out, or who lost their authenticator device
+	// (adminsecurity.go, docs/adr/0007) — clears the lockout and disables TOTP.
+	mux.HandleFunc("POST /api/v1/superadmin/admins/{id}/reset-security", s.superadmin(s.hResetAdminSecurity))
 	s.mountSuperAdminPage(mux)
 }

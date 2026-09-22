@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"example.internal/pqc-pdf-sign/server/internal/auth"
 	"example.internal/pqc-pdf-sign/server/internal/store"
@@ -81,14 +82,24 @@ func (s *Server) hListAdmins(w http.ResponseWriter, r *http.Request) {
 		if a.Role != store.RoleAdmin && a.Role != store.RoleSuperAdmin {
 			continue
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"account_id": a.ID,
 			"username":   a.Email,
 			"role":       a.Role,
 			"status":     a.Status,
 			"self":       a.ID == me,
 			"created_at": fmtTime(a.CreatedAt),
-		})
+		}
+		// TOTP is opt-in per admin (adminsecurity.go); the super admin needs to see
+		// who has it on, and whether someone is currently locked out, to know when
+		// "reset-security" is the right recovery action.
+		if a.Role == store.RoleAdmin {
+			if sec, err := s.st.SuperSecurity(a.ID); err == nil {
+				row["totp_enabled"] = sec.TOTPEnabled
+				row["locked"] = time.Until(sec.LockedUntil) > 0
+			}
+		}
+		out = append(out, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"admins": out})
 }

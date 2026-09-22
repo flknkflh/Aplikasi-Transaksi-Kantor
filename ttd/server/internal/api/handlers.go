@@ -76,7 +76,35 @@ func (s *Server) hLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := s.st.AccountByEmail(in.Email)
-	if err != nil || !auth.VerifyPassword(in.Password, a.PasswordHash) {
+	if err != nil {
+		auth.VerifyPassword(in.Password, dummyHash) // same work whether or not the account exists
+		s.st.Append(store.AuditEvent{Type: "auth.login", Result: "fail"})
+		writeErr(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	// Admin accounts get a failed-attempt lockout, unconditionally (docs/adr/0007):
+	// they can see every office's archive, so they are worth more to brute-force than
+	// an ordinary sender. Five wrong passwords/TOTP codes locks the account for 15
+	// minutes — the same policy and the same per-account security row the super admin
+	// uses (store.SuperSecurity; despite the name it is step-up login state for any
+	// account, not only the super admin's).
+	var sec store.SuperSecurity
+	if a.Role == store.RoleAdmin {
+		sec, _ = s.st.SuperSecurity(a.ID)
+		if d := time.Until(sec.LockedUntil); d > 0 {
+			s.st.Append(store.AuditEvent{Type: "auth.login", AccountID: a.ID, Result: "locked"})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error": "akun dikunci sementara karena terlalu banyak percobaan gagal", "retry_after": int(d.Seconds()),
+			})
+			return
+		}
+	}
+
+	if !auth.VerifyPassword(in.Password, a.PasswordHash) {
+		if a.Role == store.RoleAdmin {
+			s.adminSecurityFail(a.ID, &sec)
+		}
 		s.st.Append(store.AuditEvent{Type: "auth.login", AccountID: a.ID, Result: "fail"})
 		writeErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -105,6 +133,24 @@ func (s *Server) hLogin(w http.ResponseWriter, r *http.Request) {
 			"error": "akun dinonaktifkan, hubungi admin", "account_status": store.AccountDisabled,
 		})
 		return
+	}
+
+	// Opt-in TOTP (adminsecurity.go): the password was right, but this admin has
+	// enrolled an authenticator app, so a second step is required before a session
+	// is issued. The step token is signed with its own key (adminMFAStep) — an
+	// ordinary access token or the super admin's own step token cannot be used here.
+	if a.Role == store.RoleAdmin && sec.TOTPEnabled {
+		s.adminSecuritySuccess(a.ID, &sec, 0)
+		s.st.Append(store.AuditEvent{Type: "auth.login", AccountID: a.ID, Result: "mfa-pending"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"mfa_required": true,
+			"step_token":   s.adminMFAStep.Issue(a.ID, adminMFAStepRole),
+			"expires_in":   int(s.adminMFAStep.TTL().Seconds()),
+		})
+		return
+	}
+	if a.Role == store.RoleAdmin {
+		s.adminSecuritySuccess(a.ID, &sec, 0)
 	}
 
 	s.st.Append(store.AuditEvent{Type: "auth.login", AccountID: a.ID, Result: "ok"})

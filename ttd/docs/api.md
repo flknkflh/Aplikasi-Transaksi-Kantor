@@ -8,8 +8,10 @@ limiting).
 Implemented (`server/internal/api`, tested in `api_test.go`):
 
 ```
-✔ POST /api/v1/auth/register          (pending end user only; role in body ignored)
-✔ POST /api/v1/auth/login             ({email,password,code?}; code required once MFA is confirmed)
+✔ POST /api/v1/auth/register          (pending end user only; role in body ignored; rate-limited per IP)
+✔ POST /api/v1/auth/login             ({email,password}) -> {access_token} OR, for an admin who
+                                       opted into TOTP (docs/adr/0007), {mfa_required:true,step_token}
+✔ POST /api/v1/auth/login/totp        ({step_token,code}) -> {access_token}   (2nd step, admin TOTP only)
 ✔ POST /api/v1/auth/mfa/setup         (returns TOTP secret + otpauth:// URL)
 ✔ POST /api/v1/auth/mfa/verify        ({code} -> confirms the secret)
 ✔ POST /api/v1/devices
@@ -34,12 +36,15 @@ Implemented (`server/internal/api`, tested in `api_test.go`):
 ✔ POST /api/v1/admin/crl/import
 ✔ GET  /api/v1/admin/audit-events
 ✔ GET  /api/v1/admin/capabilities                   ({lab_issuer:bool, role})
+✔ GET  /api/v1/admin/security/status                ({totp_enabled} — an admin's OWN account)
+✔ POST /api/v1/admin/security/totp/begin|confirm|disable   (self-service opt-in TOTP, docs/adr/0007)
 ✔ POST /api/v1/superadmin/login {username,password} -> {step:"totp"|"setup", challenge}   (separate login, docs/adr/0005)
 ✔ POST /api/v1/superadmin/setup/begin {challenge,new_password} -> {secret,otpauth_uri,qr_png}
 ✔ POST /api/v1/superadmin/setup/confirm {challenge,code} -> {access_token}
 ✔ POST /api/v1/superadmin/verify {challenge,code} -> {access_token}      (TOTP; 15-min session)
 ✔ GET  /api/v1/superadmin/me | POST /api/v1/superadmin/change-password {current,new}
 ✔ GET|POST /api/v1/superadmin/admins | PATCH|DELETE /api/v1/superadmin/admins/{id}   (super-admin session only: the admin roster)
+✔ POST /api/v1/superadmin/admins/{id}/reset-security     (clears lockout + disables TOTP; docs/adr/0007)
 ✔ GET  /api/v1/admin/accounts                       (RB-1; client + admin rows — mutations below are client-only)
 ✔ POST /api/v1/admin/accounts/{id}/approve|disable|enable   (CLIENT accounts only — 403 for any admin/superadmin target)
 ✔ PATCH  /api/v1/admin/accounts/{id}                ({full_name,organization}; client only)
@@ -80,9 +85,21 @@ public and needs no account.
 and every `admin/*` route require a session that presented a valid TOTP code
 at login (`mfa` claim). Others are reachable without MFA.
 
-**Rate limits (§24, per minute)**: `auth/login` 10/IP, `signatures/reserve`
-60/account, `signatures/{id}/document` 30/account, `verify` 30/IP. Over the
-cap → `429` + `Retry-After`. Configurable via `api.Config.RateLimits`.
+**Rate limits (§24, per minute)**: `auth/login` 10/IP, `auth/register` 5/IP,
+`signatures/reserve` 60/account, `signatures/{id}/document` 30/account,
+`verify` 30/IP, `office/*` 120/account (docs/adr/0007 — everything behind the
+archive-app proxy, keyed per account rather than per IP since it all shares
+one TTD origin). Over the cap → `429` + `Retry-After`. Configurable via
+`api.Config.RateLimits`.
+
+**Admin lockout + opt-in TOTP (docs/adr/0007).** Every admin account gets an
+unconditional failed-attempt lockout: 5 wrong passwords or TOTP codes locks it
+15 minutes, same policy the super admin already had. TOTP itself is opt-in —
+an admin turns it on for their own account (`/admin/security/totp/*`); once
+on, `auth/login` returns `{mfa_required:true,step_token}` instead of a
+session, and `auth/login/totp` completes it. A super admin can
+`POST /superadmin/admins/{id}/reset-security` to clear a lockout or a lost
+authenticator device.
 
 ## Auth
 ```

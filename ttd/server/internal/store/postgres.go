@@ -178,6 +178,13 @@ func (p *Postgres) SetAccountPassword(id, passwordHash string) error {
 }
 
 func (p *Postgres) DeleteAccount(id string) error {
+	// Any account can have a superadmin_security row now (admins get one as soon as
+	// they log in once, docs/adr/0007) and it has no ON DELETE CASCADE, so it must
+	// go first or the account delete fails its foreign key and the caller falls
+	// back to a tombstone (disable) it didn't ask for.
+	if _, err := p.db.Exec(`DELETE FROM superadmin_security WHERE account_id=$1`, id); err != nil {
+		return err
+	}
 	return affected(p.db.Exec(`DELETE FROM accounts WHERE id=$1`, id))
 }
 

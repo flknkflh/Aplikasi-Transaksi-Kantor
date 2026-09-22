@@ -144,13 +144,15 @@
       const r = await call('GET', '/admins', undefined, true);
       const admins = (r.admins || []).filter((a) => a.role === 'admin');
       if (!admins.length) { box.innerHTML = '<p class="hint mt0">Belum ada admin. Buat admin pertama di atas.</p>'; return; }
-      box.innerHTML = '<table><thead><tr><th>Admin</th><th>Status</th><th>Dibuat</th><th></th></tr></thead><tbody>' + admins.map((a) => `<tr>
+      box.innerHTML = '<table><thead><tr><th>Admin</th><th>Status</th><th>Keamanan</th><th>Dibuat</th><th></th></tr></thead><tbody>' + admins.map((a) => `<tr>
         <td><b>${esc(a.username)}</b></td>
         <td><span class="pill ${a.status === 'active' ? 'ok' : 'bad'}">${a.status === 'active' ? 'aktif' : 'nonaktif'}</span></td>
+        <td>${a.locked ? '<span class="pill bad">terkunci</span> ' : ''}${a.totp_enabled ? '<span class="pill ok">TOTP</span>' : '<span class="faint">TOTP off</span>'}</td>
         <td class="faint">${esc(new Date(a.created_at).toLocaleDateString('id-ID'))}</td>
         <td class="acts">
           <button type="button" class="btn secondary sm" data-toggle="${esc(a.account_id)}" data-status="${esc(a.status)}">${a.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}</button>
           <button type="button" class="btn secondary sm" data-reset="${esc(a.account_id)}" data-name="${esc(a.username)}">Reset sandi</button>
+          <button type="button" class="btn secondary sm" data-secreset="${esc(a.account_id)}" data-name="${esc(a.username)}">Reset keamanan</button>
           <button type="button" class="btn danger sm" data-del="${esc(a.account_id)}" data-name="${esc(a.username)}">Hapus</button>
         </td></tr>`).join('') + '</tbody></table>';
     } catch (err) { box.innerHTML = '<p class="hint mt0">' + esc(err.message) + '</p>'; }
@@ -186,6 +188,10 @@
         $('nDone').hidden = false;
         $('nDone').textContent = 'Kata sandi baru untuk ' + t.dataset.name + ' (tampil sekali):  ' + pw;
         window.scrollTo(0, 0);
+      } else if (t.dataset.secreset) {
+        if (!confirm('Reset keamanan admin “' + t.dataset.name + '”? Ini membuka kunci akun (jika terkunci) dan MENONAKTIFKAN TOTP-nya — dipakai saat admin kehilangan perangkat authenticator atau terkunci karena gagal login berulang.')) return;
+        await call('POST', '/admins/' + encodeURIComponent(t.dataset.secreset) + '/reset-security', undefined, true);
+        toast('Keamanan direset.', 'ok'); showHome();
       } else if (t.dataset.del) {
         if (!confirm('Hapus admin “' + t.dataset.name + '” secara permanen?')) return;
         await call('DELETE', '/admins/' + encodeURIComponent(t.dataset.del), undefined, true);

@@ -153,6 +153,12 @@
   .note { font-size:12px; color:var(--text-muted); margin-top:12px; padding:10px 12px;
           border-radius:10px; background:var(--info-soft); border:1px solid var(--glass-border); }
   .link-list { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+  /* ---- self-service TOTP (docs/adr/0007) ---- */
+  .hint { color:var(--text-secondary); font-size:12.5px; }
+  .qr { display:grid; place-items:center; margin:12px 0; }
+  .qr img { background:#fff; padding:8px; border-radius:10px; }
+  .hashbox { font-family:ui-monospace,Menlo,monospace; font-size:13px; word-break:break-all;
+             background:var(--glass-bg-soft); border:1px solid var(--glass-border); border-radius:8px; padding:8px 10px; }
 </style>
 </head>
 <body>
@@ -184,14 +190,25 @@
       <img class="mark dk" src="/assets/img/logo-dark.png" alt="PQC PDF Sign">
       <div class="role">Konsol Admin</div>
     </div>
-    <label for="email">Email admin</label>
-    <input type="text" id="email" autocomplete="username" placeholder="admin@local">
-    <label for="password">Password</label>
-    <input type="password" id="password" autocomplete="current-password" placeholder="••••••••••">
-    <button class="btn btn-primary" id="btnLogin" style="margin-top:16px">
-      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-      Masuk
-    </button>
+    <div id="loginStep1">
+      <label for="email">Email admin</label>
+      <input type="text" id="email" autocomplete="username" placeholder="admin@local">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••••">
+      <button class="btn btn-primary" id="btnLogin" style="margin-top:16px">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+        Masuk
+      </button>
+    </div>
+    <!-- Shown only for an admin who has turned on TOTP for their own account
+         (docs/adr/0007) — most admins never see this. -->
+    <div id="loginStep2" class="hidden">
+      <p class="muted" style="margin-top:0">Akun ini mengaktifkan verifikasi dua langkah. Masukkan kode 6 digit dari aplikasi authenticator Anda.</p>
+      <label for="totpCode">Kode 6 digit</label>
+      <input type="text" id="totpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+      <button class="btn btn-primary" id="btnLoginTOTP" style="margin-top:16px">Verifikasi</button>
+      <div class="btn-row"><button class="btn btn-sm" id="btnLoginTOTPBack">Kembali</button></div>
+    </div>
     <div class="btn-row">
       <button class="btn" id="btnLogout">Keluar</button>
     </div>
@@ -372,6 +389,30 @@
       <!-- ============ OPERASI & UTILITAS ============ -->
       <section class="view" id="view-ops">
         <div class="glass card spotlight">
+          <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Keamanan akun saya</h2>
+          <p class="csub">Verifikasi dua langkah (TOTP) untuk login Anda sendiri — opsional. Lockout otomatis setelah percobaan gagal berulang selalu aktif, terlepas dari pengaturan ini.</p>
+          <p id="secStatus" class="muted">Memeriksa status…</p>
+          <div id="secOff">
+            <button class="btn btn-primary" id="btnSecEnable">Aktifkan TOTP</button>
+          </div>
+          <div id="secEnroll" class="hidden">
+            <p class="hint">1. Buka aplikasi authenticator (Google Authenticator, Aegis, dsb.).<br>2. Pindai kode QR ini, atau ketik kunci rahasianya.<br>3. Masukkan kode 6 digit yang muncul.</p>
+            <div class="qr"><img id="secQr" alt="Kode QR authenticator" width="200" height="200"></div>
+            <label>Kunci rahasia (jika tidak bisa memindai)</label>
+            <div class="hashbox" id="secSecret"></div>
+            <label for="secCode">Kode 6 digit</label>
+            <input type="text" id="secCode" inputmode="numeric" maxlength="6" placeholder="123456">
+            <button class="btn btn-primary" id="btnSecConfirm" style="margin-top:10px">Konfirmasi &amp; aktifkan</button>
+          </div>
+          <div id="secOn" class="hidden">
+            <p class="muted">TOTP aktif untuk akun ini.</p>
+            <label for="secDisableCode">Kode 6 digit (untuk menonaktifkan)</label>
+            <input type="text" id="secDisableCode" inputmode="numeric" maxlength="6" placeholder="123456">
+            <button class="btn btn-danger" id="btnSecDisable" style="margin-top:10px">Nonaktifkan TOTP</button>
+          </div>
+        </div>
+
+        <div class="glass card spotlight">
           <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.65.22 1v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>Utilitas</h2>
           <p class="csub">Kelola pencabutan sertifikat dan impor CRL. Perubahan CRL langsung dipakai verifier.</p>
           <div class="grid2">
@@ -537,12 +578,28 @@ document.addEventListener("click", (ev) => {
 });
 
 // ---- login flow ------------------------------------------------------
+// Two steps only when the admin turned TOTP on for their own account
+// (docs/adr/0007) — most admins never see loginStep2 at all.
+let mfaStepToken = "";
+
+function showLoginStep(n) {
+  $("loginStep1").classList.toggle("hidden", n !== 1);
+  $("loginStep2").classList.toggle("hidden", n !== 2);
+}
+
 async function doLogin() {
   const email = $("email").value.trim();
   const password = $("password").value;
   store.email = email;
   try {
     const r = await api("POST", "/api/v1/auth/login", { email, password });
+    if (r.mfa_required) {
+      mfaStepToken = r.step_token;
+      showLoginStep(2);
+      $("totpCode").value = "";
+      $("totpCode").focus();
+      return;
+    }
     store.token = r.access_token;
     toast("Berhasil masuk", "ok");
     await afterLogin();
@@ -551,8 +608,23 @@ async function doLogin() {
   }
 }
 
+async function doLoginTOTP() {
+  try {
+    const r = await api("POST", "/api/v1/auth/login/totp", { step_token: mfaStepToken, code: $("totpCode").value.trim() });
+    store.token = r.access_token;
+    mfaStepToken = "";
+    showLoginStep(1);
+    toast("Berhasil masuk", "ok");
+    await afterLogin();
+  } catch (e) {
+    toast("Kode salah: " + e.message, "err");
+  }
+}
+
 function doLogout() {
   store.token = "";
+  mfaStepToken = "";
+  showLoginStep(1);
   $("whoami").textContent = "belum masuk";
   $("appShell").classList.add("hidden");
   $("loginView").classList.remove("hidden");
@@ -588,7 +660,45 @@ async function afterLogin() {
   showView("dashboard");
   await refreshAccounts();
   await refresh();
+  await refreshSecStatus().catch(() => {});
   startAuto();
+}
+
+// ---- self-service TOTP for MY OWN account (docs/adr/0007) --------
+let secPendingSecret = "";
+async function refreshSecStatus() {
+  const r = await api("GET", "/api/v1/admin/security/status");
+  $("secStatus").textContent = r.totp_enabled
+    ? "Status: TOTP AKTIF untuk akun Anda."
+    : "Status: TOTP belum aktif untuk akun Anda (opsional).";
+  $("secOff").classList.toggle("hidden", r.totp_enabled);
+  $("secEnroll").classList.add("hidden");
+  $("secOn").classList.toggle("hidden", !r.totp_enabled);
+}
+async function enableSec() {
+  try {
+    const r = await api("POST", "/api/v1/admin/security/totp/begin");
+    secPendingSecret = r.secret;
+    $("secQr").src = r.qr_png || "";
+    $("secSecret").textContent = r.secret;
+    $("secCode").value = "";
+    $("secOff").classList.add("hidden");
+    $("secEnroll").classList.remove("hidden");
+  } catch (e) { toast("Gagal menyiapkan TOTP: " + e.message, "err"); }
+}
+async function confirmSec() {
+  try {
+    await api("POST", "/api/v1/admin/security/totp/confirm", { code: $("secCode").value.trim() });
+    toast("TOTP aktif", "ok");
+    await refreshSecStatus();
+  } catch (e) { toast("Kode salah: " + e.message, "err"); }
+}
+async function disableSec() {
+  try {
+    await api("POST", "/api/v1/admin/security/totp/disable", { code: $("secDisableCode").value.trim() });
+    toast("TOTP dinonaktifkan", "ok");
+    await refreshSecStatus();
+  } catch (e) { toast("Kode salah: " + e.message, "err"); }
 }
 
 // ---- admin roster (super admin only) -------------------------------
@@ -946,7 +1056,13 @@ $("btnVpOpen").onclick = () => {
 
 // ---- wiring ----------------------------------------------------
 $("btnLogin").onclick = doLogin;
+$("btnLoginTOTP").onclick = doLoginTOTP;
+$("btnLoginTOTPBack").onclick = () => { mfaStepToken = ""; showLoginStep(1); };
+$("totpCode").addEventListener("keydown", (e) => { if (e.key === "Enter") doLoginTOTP(); });
 $("btnLogout").onclick = doLogout;
+$("btnSecEnable").onclick = enableSec;
+$("btnSecConfirm").onclick = confirmSec;
+$("btnSecDisable").onclick = disableSec;
 $("btnAddAdmin").onclick = addAdmin;
 $("btnAdminsRefresh").onclick = () => refreshAdmins().catch(() => {});
 $("btnLogout2").onclick = doLogout;
