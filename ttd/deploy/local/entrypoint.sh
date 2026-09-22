@@ -23,5 +23,25 @@ export PQC_RATE_LIMIT_DISABLED=1
 # to this machine's LAN IP on the verify port, e.g.
 #   PQC_PUBLIC_BASE_URL=http://172.16.23.177:8098
 PUBLIC_BASE="${PQC_PUBLIC_BASE_URL:-http://localhost:18098}"
+
+# TLS (opt-in): set PQC_TLS_HOSTS (comma-separated DNS names / IPs for the
+# certificate's SAN, e.g. "localhost,127.0.0.1") to also serve HTTPS with a
+# self-signed cert generated on first boot into /tls (a mounted volume, so it
+# survives restarts) — TLS 1.3 with hybrid post-quantum key exchange
+# (docs/adr/0009, deploy/office/TLS.md). Bring your own cert instead by
+# setting PQC_TLS_CERT_FILE/PQC_TLS_KEY_FILE directly and skipping PQC_TLS_HOSTS.
+TLS_ARGS=""
+if [ -n "${PQC_TLS_HOSTS:-}" ] && [ -z "${PQC_TLS_CERT_FILE:-}" ]; then
+  TLS_DIR="${PQC_TLS_DIR:-/tls}"
+  mkdir -p "$TLS_DIR"
+  export PQC_TLS_CERT_FILE="$TLS_DIR/cert.pem"
+  export PQC_TLS_KEY_FILE="$TLS_DIR/key.pem"
+  tls-selfsigned -out-cert "$PQC_TLS_CERT_FILE" -out-key "$PQC_TLS_KEY_FILE" -host "$PQC_TLS_HOSTS"
+fi
+if [ -n "${PQC_TLS_CERT_FILE:-}" ]; then
+  TLS_ARGS="--tls-addr :8443 --verify-tls-addr :8444"
+  echo ">> HTTPS on :8443 (main) and :8444 (verify-only) — TLS 1.3, hybrid post-quantum key exchange"
+fi
+
 echo ">> API on :8099   verify-only site on :8098   QR base=$PUBLIC_BASE"
-exec api --addr ":8099" --verify-addr ":8098" --public-base-url "$PUBLIC_BASE"
+exec api --addr ":8099" --verify-addr ":8098" --public-base-url "$PUBLIC_BASE" $TLS_ARGS

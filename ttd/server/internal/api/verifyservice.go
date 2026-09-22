@@ -25,7 +25,7 @@ func (s *Server) VerifyRoutes() http.Handler {
 	// The verify page may be opened at one address (localhost) while pointed
 	// at the server on another (the LAN IP typed into the "Alamat server"
 	// box). This service is public and read-only, so allow any origin.
-	return corsAny(mux)
+	return s.hsts(corsAny(mux))
 }
 
 func corsAny(next http.Handler) http.Handler {

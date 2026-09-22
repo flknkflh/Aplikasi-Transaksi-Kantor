@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,9 +27,40 @@ import (
 	"example.internal/pqc-pdf-sign/server/internal/store"
 )
 
+// tlsConfig, when both cert/key are given, is TLS 1.3-only with post-quantum
+// hybrid key exchange preferred (docs/adr/0009): Go's crypto/tls has offered
+// X25519MLKEM768 by default since Go 1.24 and added SecP256r1MLKEM768 in Go
+// 1.26 — listed explicitly here so it is a deliberate choice, not an implicit
+// default a future GODEBUG flag or Go version could silently change. Classical
+// X25519/P-256 stay listed too so a client without PQC support still connects
+// (graceful degradation, not a hard requirement).
+func tlsConfigFor(certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS cert/key: %w", err)
+	}
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{cert},
+		CurvePreferences: []tls.CurveID{
+			tls.X25519MLKEM768,    // hybrid: X25519 + ML-KEM-768 (post-quantum)
+			tls.SecP256r1MLKEM768, // hybrid: P-256 + ML-KEM-768 (post-quantum)
+			tls.X25519,            // classical fallback
+			tls.CurveP256,         // classical fallback
+		},
+	}, nil
+}
+
 func main() {
 	addr := flag.String("addr", envOr("PQC_ADDR", ":8080"), "listen address")
 	verifyAddr := flag.String("verify-addr", envOr("PQC_VERIFY_ADDR", ""), "if set, also serve a verification-ONLY site (upload page + /api/v1/verify + QR pages) on this address, no auth")
+	// TLS is additive, not a replacement for -addr/-verify-addr: set these to also
+	// serve the SAME routes over HTTPS on their own address, so nothing that
+	// already talks to the plain HTTP port breaks (docs/adr/0009).
+	tlsAddr := flag.String("tls-addr", envOr("PQC_TLS_ADDR", ""), "if set (with -tls-cert/-tls-key), also serve the main site over HTTPS (TLS 1.3, hybrid post-quantum key exchange) on this address")
+	verifyTLSAddr := flag.String("verify-tls-addr", envOr("PQC_VERIFY_TLS_ADDR", ""), "if set (with -verify-addr set and -tls-cert/-tls-key), also serve the verify-only site over HTTPS on this address")
+	tlsCert := flag.String("tls-cert", os.Getenv("PQC_TLS_CERT_FILE"), "TLS certificate PEM file (required if -tls-addr or -verify-tls-addr is set)")
+	tlsKey := flag.String("tls-key", os.Getenv("PQC_TLS_KEY_FILE"), "TLS private key PEM file (required if -tls-addr or -verify-tls-addr is set)")
 	rootPath := flag.String("root-ca", os.Getenv("PQC_ROOT_CA_PEM"), "Root CA PEM file (required)")
 	chainPath := flag.String("ca-chain", os.Getenv("PQC_CA_CHAIN_PEM"), "Root+Intermediate chain PEM file")
 	crlPath := flag.String("crl", os.Getenv("PQC_CRL_PEM"), "current CRL PEM file")
@@ -109,6 +141,28 @@ func main() {
 		}
 	}
 
+	// TLS listeners (docs/adr/0009): additive, on their own address(es), the
+	// plain HTTP ones above are untouched either way.
+	var tlsSrv, verifyTLSSrv *http.Server
+	if *tlsAddr != "" || *verifyTLSAddr != "" {
+		if *tlsCert == "" || *tlsKey == "" {
+			log.Fatal("api: -tls-cert and -tls-key (or PQC_TLS_CERT_FILE/PQC_TLS_KEY_FILE) are required when -tls-addr or -verify-tls-addr is set")
+		}
+		tc, err := tlsConfigFor(*tlsCert, *tlsKey)
+		if err != nil {
+			log.Fatalf("api: %v", err)
+		}
+		if *tlsAddr != "" {
+			tlsSrv = &http.Server{Addr: *tlsAddr, Handler: srv.Routes(), TLSConfig: tc, ReadHeaderTimeout: 10 * time.Second}
+		}
+		if *verifyTLSAddr != "" {
+			if verifySrv == nil {
+				log.Fatal("api: -verify-tls-addr requires -verify-addr to also be set")
+			}
+			verifyTLSSrv = &http.Server{Addr: *verifyTLSAddr, Handler: srv.VerifyRoutes(), TLSConfig: tc, ReadHeaderTimeout: 10 * time.Second}
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	go func() {
@@ -125,12 +179,34 @@ func main() {
 			}
 		}()
 	}
+	if tlsSrv != nil {
+		go func() {
+			fmt.Printf("pqc-pdf-sign receiver API listening on %s (HTTPS, TLS 1.3 hybrid PQC)\n", tlsSrv.Addr)
+			if err := tlsSrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("api: tls serve: %v", err)
+			}
+		}()
+	}
+	if verifyTLSSrv != nil {
+		go func() {
+			fmt.Printf("pqc-pdf-sign verification-only site listening on %s (HTTPS, TLS 1.3 hybrid PQC)\n", verifyTLSSrv.Addr)
+			if err := verifyTLSSrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("api: verify tls serve: %v", err)
+			}
+		}()
+	}
 	<-ctx.Done()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutCtx)
 	if verifySrv != nil {
 		_ = verifySrv.Shutdown(shutCtx)
+	}
+	if tlsSrv != nil {
+		_ = tlsSrv.Shutdown(shutCtx)
+	}
+	if verifyTLSSrv != nil {
+		_ = verifyTLSSrv.Shutdown(shutCtx)
 	}
 }
 

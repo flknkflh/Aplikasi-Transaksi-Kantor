@@ -16,14 +16,16 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     bash web/build.sh && \
     cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
-    cd /src/tools/ca-admin && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ca-admin .
+    cd /src/tools/ca-admin && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ca-admin . && \
+    cd /src/tools/tls-selfsigned && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tls-selfsigned .
 
 FROM alpine:3.20
 # tzdata: the stamp caption prints the server date in Asia/Jakarta.
 RUN apk add --no-cache ca-certificates curl tzdata
 COPY --from=build /out/api /usr/local/bin/api
 COPY --from=build /out/ca-admin /usr/local/bin/ca-admin
+COPY --from=build /out/tls-selfsigned /usr/local/bin/tls-selfsigned
 COPY deploy/local/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-EXPOSE 8099 8098
+EXPOSE 8099 8098 8443 8444
 ENTRYPOINT ["/entrypoint.sh"]

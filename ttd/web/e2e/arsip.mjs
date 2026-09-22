@@ -61,7 +61,10 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
 const problems = { csp: [], errors: [] };
 
 async function persona() {
-  const ctx = await browser.newContext({ acceptDownloads: true });
+  // ignoreHTTPSErrors: inert against a plain http:// BASE; lets E2E_BASE point
+  // at the self-signed HTTPS listener too (docs/adr/0009) without failing on
+  // the cert not being publicly trusted.
+  const ctx = await browser.newContext({ acceptDownloads: true, ignoreHTTPSErrors: true });
   await ctx.addInitScript(() => {
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI));

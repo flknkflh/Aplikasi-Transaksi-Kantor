@@ -20,6 +20,8 @@ shift || true
 PROJECT="office_restore_test"
 APP_PORT=18199
 VERIFY_PORT=18198
+TLS_APP_PORT=18543
+TLS_VERIFY_PORT=18544
 LIVE=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -81,18 +83,21 @@ restore_volume ledger_keystore keystore.tar.gz
 restore_volume minio_data      minio-data.tar.gz
 restore_volume ttd_ca          ttd-ca.tar.gz
 restore_volume ttd_objects     ttd-objects.tar.gz
+restore_volume ttd_tls         ttd-tls.tar.gz
 
 echo ">> starting the full stack"
 if [ "$LIVE" = 1 ]; then
   docker compose -p "$PROJECT" up -d
 else
-  PQC_APP_PORT="$APP_PORT" PQC_VERIFY_PORT="$VERIFY_PORT" docker compose -p "$PROJECT" up -d
+  PQC_APP_PORT="$APP_PORT" PQC_VERIFY_PORT="$VERIFY_PORT" \
+    PQC_TLS_APP_PORT="$TLS_APP_PORT" PQC_TLS_VERIFY_PORT="$TLS_VERIFY_PORT" \
+    docker compose -p "$PROJECT" up -d
 fi
 
 echo
 echo "  Restored into project '$PROJECT'."
 if [ "$LIVE" = 0 ]; then
-  echo "  App:    http://localhost:$APP_PORT/app/"
+  echo "  App:    http://localhost:$APP_PORT/app/  (HTTPS: https://localhost:$TLS_APP_PORT/app/)"
   echo "  Verify: http://localhost:$VERIFY_PORT"
   echo "  Tear down when done:  docker compose -p $PROJECT down -v"
 fi

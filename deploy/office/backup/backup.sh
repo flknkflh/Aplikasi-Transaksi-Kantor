@@ -53,6 +53,7 @@ tar_volume ledger_keystore keystore.tar.gz     # signing private keys (encrypted
 tar_volume minio_data      minio-data.tar.gz   # uploaded files — usually the biggest part of the backup
 tar_volume ttd_ca          ttd-ca.tar.gz       # lab CA material (dev/lab issuer only)
 tar_volume ttd_objects     ttd-objects.tar.gz  # legacy TTD-signed PDFs, if that flow was ever used
+tar_volume ttd_tls         ttd-tls.tar.gz      # TLS cert+key (docs/adr/0009) — cheap to keep, avoids a fresh browser trust prompt after restore
 # NOT backed up: ledger_uploads — scratch space for in-progress uploads only;
 # an interrupted upload just gets resumed or restarted, there is nothing durable there.
 
@@ -63,7 +64,7 @@ cat > "$STAGE/MANIFEST.txt" <<EOF
 office archive app backup
 created (UTC): $TS
 repo commit:   $(git -C "$OFFICE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
-contents:      ttd-db.dump ledger-db.dump keystore.tar.gz minio-data.tar.gz ttd-ca.tar.gz ttd-objects.tar.gz
+contents:      ttd-db.dump ledger-db.dump keystore.tar.gz minio-data.tar.gz ttd-ca.tar.gz ttd-objects.tar.gz ttd-tls.tar.gz
 NOT included:  ledger_uploads (transient scratch — see backup.sh)
 NOT included:  the Fabric ledger itself — it is replicated across peer organizations by design;
                recovering a peer is a network/ concern, not a data-loss concern (docs/adr/0001).

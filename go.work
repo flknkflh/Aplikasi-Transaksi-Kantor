@@ -10,4 +10,5 @@ use (
 	./ttd/core
 	./ttd/server
 	./ttd/tools/ca-admin
+	./ttd/tools/tls-selfsigned
 )

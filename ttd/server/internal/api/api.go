@@ -324,7 +324,27 @@ func (s *Server) Routes() http.Handler {
 	// Shared Liquid Glass stylesheet + runtime (also mounted on VerifyRoutes).
 	s.mountUIKit(mux)
 
-	return mux
+	return s.hsts(mux)
+}
+
+// hsts sends Strict-Transport-Security on every response served over TLS —
+// natively (r.TLS != nil) or behind a reverse proxy that terminates it
+// (X-Forwarded-Proto: https, the same signal hPublicServer already uses).
+// Sending it over plain HTTP is a no-op browsers ignore per spec, so it is
+// deliberately withheld there rather than sent unconditionally. See
+// docs/adr/0009 and deploy/office/TLS.md for turning TLS on.
+func (s *Server) hsts(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			// 2 years; includeSubDomains only makes sense once every subdomain
+			// actually serves HTTPS too — true here since this is the one origin
+			// the whole app is served from (ADR-0003). Not adding "preload": that
+			// is only meaningful once this runs on a publicly trusted certificate
+			// and a real domain — see deploy/office/TLS.md.
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // hCapabilities lets the /admin console feature-detect optional endpoints and
