@@ -566,13 +566,41 @@ func submissionResult(sig store.Signature) map[string]any {
 	}
 }
 
+// signatureView is the allowlisted shape of a store.Signature sent to its
+// owner (docs/adr/0010): everything they legitimately need to know about
+// their own signature, and nothing else. In particular NOT StorageObjectKey
+// — an internal object-storage reference the client has no legitimate use
+// for (the file itself comes back through hDownload) and no business seeing
+// the shape of; and not AccountID, which is redundant here (it is always
+// the caller's own). Keeping this as an explicit field list also means a
+// future field added to store.Signature does not silently start being
+// exposed — it has to be added here on purpose.
+func signatureView(sig store.Signature) map[string]any {
+	return map[string]any{
+		"public_id":                   sig.PublicID,
+		"device_id":                   sig.DeviceID,
+		"certificate_id":              sig.CertificateID,
+		"cert_serial":                 sig.CertSerial,
+		"cert_fingerprint":            sig.CertFingerprint,
+		"algorithm":                   sig.Algorithm,
+		"pdf_profile":                 sig.PDFProfile,
+		"original_sha512":             sig.OriginalSHA512,
+		"signed_sha512":               sig.SignedSHA512,
+		"client_claimed_signing_time": sig.ClientClaimedSigningTime,
+		"server_received_at":          fmtTime(sig.ServerReceivedAt),
+		"signed_size":                 sig.SignedSize,
+		"verification_status":         sig.VerificationStatus,
+		"created_at":                  fmtTime(sig.CreatedAt),
+	}
+}
+
 func (s *Server) hGetSignature(w http.ResponseWriter, r *http.Request) {
 	sig, err := s.st.Signature(r.PathValue("public_id"))
 	if err != nil || sig.AccountID != claims(r).Sub {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, sig)
+	writeJSON(w, http.StatusOK, signatureView(sig))
 }
 
 func (s *Server) hDownload(w http.ResponseWriter, r *http.Request) {
@@ -591,7 +619,12 @@ func (s *Server) hDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) hMySignatures(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"signatures": s.st.SignaturesByAccount(claims(r).Sub)})
+	sigs := s.st.SignaturesByAccount(claims(r).Sub)
+	out := make([]map[string]any, 0, len(sigs))
+	for _, sig := range sigs {
+		out = append(out, signatureView(sig))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"signatures": out})
 }
 
 // ---- public verifier ----
