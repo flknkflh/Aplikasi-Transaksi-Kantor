@@ -155,10 +155,16 @@
   .link-list { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
   /* ---- self-service TOTP (docs/adr/0007) ---- */
   .hint { color:var(--text-secondary); font-size:12.5px; }
+  .mt0 { margin-top:0; }
   .qr { display:grid; place-items:center; margin:12px 0; }
   .qr img { background:#fff; padding:8px; border-radius:10px; }
   .hashbox { font-family:ui-monospace,Menlo,monospace; font-size:13px; word-break:break-all;
              background:var(--glass-bg-soft); border:1px solid var(--glass-border); border-radius:8px; padding:8px 10px; }
+  /* ---- per-account certificate detail (docs/adr/0008) ---- */
+  .certs-detail td { padding:10px 14px 16px; background:var(--glass-bg-soft); }
+  table.certs-sub { width:100%; font-size:12.5px; }
+  table.certs-sub th { text-align:left; color:var(--text-muted); font-weight:600; padding:4px 8px; }
+  table.certs-sub td { padding:5px 8px; border-top:1px solid var(--glass-border); }
 </style>
 </head>
 <body>
@@ -799,16 +805,63 @@ async function refreshAccounts() {
       acts = `<button class="btn btn-sm btn-ghost" data-act="acc-enable" data-id="${esc(id)}">Aktifkan kembali</button>
               <button class="btn btn-sm btn-danger" data-act="acc-delete" data-id="${esc(id)}">Hapus</button>`;
     }
+    const certsCell = Number(a.certificates) > 0
+      ? `<button type="button" class="btn btn-sm btn-ghost mono" data-act="acc-certs" data-id="${esc(id)}">${esc(a.active_certificates)}/${esc(a.certificates)} &#9662;</button>`
+      : `<span class="mono muted">0/0</span>`;
     return `<tr>
       <td class="mono">${esc((a.created_at || "").replace("T", " ").replace("Z", ""))}</td>
       <td>${esc(a.full_name || "—")}<br><span class="muted mono">${esc(a.email)}</span></td>
       <td>${esc(a.organization || "—")}</td>
-      <td class="mono">${esc(a.active_certificates)}/${esc(a.certificates)}</td>
+      <td class="mono">${certsCell}</td>
       <td><span class="pill ${esc(a.status)}">${esc(a.status)}</span></td>
-      <td class="row">${acts}</td></tr>`;
+      <td class="row">${acts}</td></tr>
+      <tr class="certs-detail hidden" id="certs-${esc(id)}"><td colspan="6"></td></tr>`;
   }).join("");
   renderApprovals();
   updateDashboard();
+}
+
+// ---- per-account certificate detail (expiry, renew) — docs/adr/0008 -----
+function fmtDate(s) {
+  if (!s) return "—";
+  try { return new Date(s).toLocaleDateString("id-ID", { year: "numeric", month: "short", day: "numeric" }); }
+  catch { return s; }
+}
+async function toggleCerts(accountID) {
+  const row = $("certs-" + accountID);
+  if (!row) return;
+  const open = !row.classList.contains("hidden");
+  // collapse every other open panel first — only one open at a time
+  document.querySelectorAll(".certs-detail").forEach((r) => r.classList.add("hidden"));
+  if (open) return; // was open -> just closed it
+  row.classList.remove("hidden");
+  const cell = row.querySelector("td");
+  cell.innerHTML = '<p class="hint mt0">Memuat sertifikat…</p>';
+  try {
+    const r = await api("GET", `/api/v1/admin/accounts/${accountID}/certificates`);
+    const certs = r.certificates || [];
+    if (!certs.length) { cell.innerHTML = '<p class="hint mt0">Belum ada sertifikat.</p>'; return; }
+    cell.innerHTML = '<table class="certs-sub"><thead><tr><th>Perangkat</th><th>Serial</th><th>Terbit</th><th>Kedaluwarsa</th><th>Status</th><th></th></tr></thead><tbody>' +
+      certs.map((c) => {
+        const expired = c.expired && c.status === "active";
+        const statusPill = c.status === "revoked"
+          ? `<span class="pill disabled" title="${esc(c.rev_reason || '')}">dicabut</span>`
+          : expired ? `<span class="pill disabled">kedaluwarsa</span>` : `<span class="pill active">aktif</span>`;
+        const renewBtn = c.status === "active"
+          ? `<button type="button" class="btn btn-sm btn-ghost" data-act="cert-renew" data-account="${esc(accountID)}" data-cert="${esc(c.certificate_id)}">Perpanjang</button>`
+          : "";
+        return `<tr>
+          <td class="mono">${esc(c.device_id)}</td>
+          <td class="mono" title="${esc(c.serial)}">${esc((c.serial || "").slice(0, 12))}…</td>
+          <td class="mono">${esc(fmtDate(c.not_before))}</td>
+          <td class="mono${expired ? " bad" : ""}">${esc(fmtDate(c.not_after))}</td>
+          <td>${statusPill}</td>
+          <td>${renewBtn}</td>
+        </tr>`;
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    cell.innerHTML = '<p class="hint mt0">' + esc(e.message) + "</p>";
+  }
 }
 
 // ---- approval queue ------------------------------------------------
@@ -1023,6 +1076,15 @@ document.addEventListener("click", async (ev) => {
         } catch (e) { toast("Ditolak: " + e.message, "err"); }
       };
       f.click();
+    } else if (act === "acc-certs") {
+      await toggleCerts(id);
+    } else if (act === "cert-renew") {
+      const accountID = btn.dataset.account, certID = btn.dataset.cert;
+      if (!confirm("Perpanjang sertifikat ini? Sertifikat LAMA tetap berlaku (tidak dicabut) — ini menyiapkan pendaftaran baru untuk diterbitkan lewat CA.")) { btn.disabled = false; return; }
+      const r = await api("POST", `/api/v1/admin/accounts/${accountID}/certificates/${certID}/renew`, {});
+      toast((r.note || "Pendaftaran perpanjangan dibuat") + " (ID: " + r.enrollment_id + ")", "ok");
+      showView("devices");
+      await refresh();
     }
   } catch (e) {
     toast("Gagal: " + e.message, "err");

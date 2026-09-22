@@ -296,6 +296,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/accounts/{id}/enable", s.admin(s.hEnableAccount))
 	mux.HandleFunc("PATCH /api/v1/admin/accounts/{id}", s.admin(s.hUpdateAccount))
 	mux.HandleFunc("DELETE /api/v1/admin/accounts/{id}", s.admin(s.hDeleteAccount))
+	// Per-account certificate detail (expiry etc.) + renewal (certificates.go).
+	mux.HandleFunc("GET /api/v1/admin/accounts/{id}/certificates", s.admin(s.hListAccountCertificates))
+	mux.HandleFunc("POST /api/v1/admin/accounts/{id}/certificates/{cert_id}/renew", s.admin(s.hRenewCertificate))
 
 	mux.HandleFunc("GET /api/v1/admin/enrollments", s.admin(s.hListEnrollments))
 	mux.HandleFunc("GET /api/v1/admin/enrollments/{id}/export", s.admin(s.hExportEnrollment))

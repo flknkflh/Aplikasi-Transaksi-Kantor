@@ -49,6 +49,8 @@ Implemented (`server/internal/api`, tested in `api_test.go`):
 ✔ POST /api/v1/admin/accounts/{id}/approve|disable|enable   (CLIENT accounts only — 403 for any admin/superadmin target)
 ✔ PATCH  /api/v1/admin/accounts/{id}                ({full_name,organization}; client only)
 ✔ DELETE /api/v1/admin/accounts/{id}                (cascade revoke + CRL; tombstone if it has history; client only)
+✔ GET  /api/v1/admin/accounts/{id}/certificates                    (expiry per cert; docs/adr/0008)
+✔ POST /api/v1/admin/accounts/{id}/certificates/{cert_id}/renew    (fresh cert, same CSR; old one untouched)
 ✔ GET  /admin                                       (static operator console)
 ```
 
@@ -165,6 +167,9 @@ POST   /api/v1/admin/accounts/{id}/disable        (client only; cascade: revoke 
 POST   /api/v1/admin/accounts/{id}/enable         (client only)
 PATCH  /api/v1/admin/accounts/{id}                (client only; {full_name, organization})
 DELETE /api/v1/admin/accounts/{id}                (client only; cascade; tombstone if it has signatures)
+GET    /api/v1/admin/accounts/{id}/certificates                 (per-cert expiry; docs/adr/0008)
+POST   /api/v1/admin/accounts/{id}/certificates/{cert_id}/renew (new cert, same CSR/device;
+                                                                  the old certificate stays active/untouched)
 
 Admin accounts are managed ONLY via /api/v1/superadmin/admins (super admin, full CRUD).
 The /admin/accounts/* mutation routes return 403 for any admin/superadmin
