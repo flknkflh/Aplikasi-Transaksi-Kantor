@@ -11,4 +11,5 @@ use (
 	./ttd/server
 	./ttd/tools/ca-admin
 	./ttd/tools/tls-selfsigned
+	./network/tools/office-node
 )

@@ -31,3 +31,8 @@ Thumbs.db
 
 # Backup archives (encrypted, but still real production data — never committed)
 deploy/office/backups/
+
+# office-node join packages (contain a peer's private key + org admin MSP)
+network/tools/office-node/packages/
+network/tools/office-node/office-node
+network/tools/office-node/office-node-linux
