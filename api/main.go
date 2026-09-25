@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +28,7 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg := config.Load()
+	rejectInsecureConfig(logger, cfg)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -120,6 +123,44 @@ func main() {
 		logger.Error("http server", "error", err)
 		os.Exit(1)
 	}
+}
+
+// rejectInsecureConfig hard-fails startup if a secret still matches a known
+// placeholder/example value — several of which are the exact literals
+// deploy/office/docker-compose.yml ships as convenience dev defaults (docs/adr/0006
+// security checklist #9: a real deployment must never silently start on one of
+// these). ALLOW_INSECURE_DEV_SECRETS=true is the explicit opt-in that compose file
+// uses for local/dev runs; mirrors ttd/server/cmd/api/main.go's own check.
+func rejectInsecureConfig(logger *slog.Logger, cfg config.Config) {
+	allowInsecureDev, _ := strconv.ParseBool(os.Getenv("ALLOW_INSECURE_DEV_SECRETS"))
+	check := func(name, value string) {
+		if value == "" || !looksLikeDefaultSecret(value) {
+			return
+		}
+		if allowInsecureDev {
+			logger.Warn("insecure placeholder secret allowed", "env", name, "reason", "ALLOW_INSECURE_DEV_SECRETS=true — never set that in production")
+			return
+		}
+		logger.Error("secret looks like a placeholder/example value shipped in this repo's own docs", "env", name, "fix", "set a real secret, or set ALLOW_INSECURE_DEV_SECRETS=true for local dev only")
+		os.Exit(1)
+	}
+	check("DATABASE_URL", cfg.DatabaseURL)
+	check("MINIO_SECRET_KEY", cfg.MinIOSecretKey)
+	check("OFFICE_PROXY_SECRET", cfg.OfficeProxySecret)
+	check("KEYSTORE_KEK", cfg.KeystoreKEK)
+}
+
+func looksLikeDefaultSecret(v string) bool {
+	lower := strings.ToLower(v)
+	for _, marker := range []string{
+		"change_me", "change-me", "changeme", "ganti_ini", "ganti-ini",
+		"dev_only", "dev-only", "example", "placeholder", "insecure",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureBucket(ctx context.Context, client *minio.Client, bucket string) error {

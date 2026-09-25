@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
 
 	"example.internal/pqc-pdf-sign/server/internal/api"
@@ -74,18 +75,23 @@ func main() {
 	if len(secret) < 16 {
 		log.Fatal("api: PQC_JWT_SECRET must be set to at least 16 bytes")
 	}
+	allowInsecureDev := boolEnv("ALLOW_INSECURE_DEV_SECRETS")
+	rejectInsecureSecret("PQC_JWT_SECRET", string(secret), allowInsecureDev)
 
 	cfg := api.Config{JWTSecret: secret, PublicBaseURL: *baseURL, AccessTTL: 15 * time.Minute}
 	cfg.SuperAdminUsername = envOr("PQC_SUPERADMIN_USERNAME", "superadmin")
 	cfg.SuperAdminPassword = os.Getenv("PQC_SUPERADMIN_PASSWORD")    // "" -> generated + logged once
 	cfg.BootstrapAdminEmail = os.Getenv("PQC_BOOTSTRAP_ADMIN_EMAIL") // seed/dev only; see ensureBootstrapAdmin
 	cfg.BootstrapAdminPassword = os.Getenv("PQC_BOOTSTRAP_ADMIN_PASSWORD")
+	rejectInsecureSecret("PQC_SUPERADMIN_PASSWORD", cfg.SuperAdminPassword, allowInsecureDev)
+	rejectInsecureSecret("PQC_BOOTSTRAP_ADMIN_PASSWORD", cfg.BootstrapAdminPassword, allowInsecureDev)
 	cfg.MaxUploadBytes = mbEnv("PQC_MAX_UPLOAD_MB", 25)   // absolute ceiling
 	cfg.MaxStampBytes = mbEnv("PQC_MAX_STAMP_MB", 150)    // server QR stamp (pdfcpu) cap
 	cfg.MaxVerifyBytes = mbEnv("PQC_MAX_VERIFY_MB", 350)  // strict re-verify cap; larger = store-only
 	cfg.WebDir = os.Getenv("PQC_WEB_DIR")                 // "" -> embedded browser client
 	cfg.OfficeUpstream = os.Getenv("PQC_OFFICE_UPSTREAM") // e.g. http://ledger-api:8080
 	cfg.OfficeSecret = os.Getenv("PQC_OFFICE_SECRET")
+	rejectInsecureSecret("PQC_OFFICE_SECRET", cfg.OfficeSecret, allowInsecureDev)
 	cfg.ServerName = envOr("PQC_SERVER_NAME", "Server Arsip")
 	cfg.UploadDir = os.Getenv("PQC_UPLOAD_DIR") // "" -> os.TempDir()
 	if boolEnv("PQC_RATE_LIMIT_DISABLED") {
@@ -266,4 +272,39 @@ func envOr(k, def string) string {
 func boolEnv(k string) bool {
 	b, _ := strconv.ParseBool(os.Getenv(k))
 	return b
+}
+
+// rejectInsecureSecret hard-fails startup if value is empty-but-required-elsewhere
+// (that is checked separately) or matches a known placeholder/example value —
+// several of which are the exact literals this repo's own .env.example and
+// deploy/office/docker-compose.yml ship as convenience dev defaults (docs/adr/0006
+// security checklist #9: a real deployment must never silently start on one of
+// these). allowInsecureDev, set via ALLOW_INSECURE_DEV_SECRETS=true, is the
+// explicit opt-in deploy/office/docker-compose.yml uses for local/dev runs.
+func rejectInsecureSecret(envName, value string, allowInsecureDev bool) {
+	if value == "" || !looksLikeDefaultSecret(value) {
+		return
+	}
+	if allowInsecureDev {
+		log.Printf("api: WARNING %s is a known placeholder/example value — allowed only because ALLOW_INSECURE_DEV_SECRETS=true; never set that in production", envName)
+		return
+	}
+	log.Fatalf("api: %s looks like a placeholder/example value shipped in this repo's own docs — set a real secret (see .env.example), or set ALLOW_INSECURE_DEV_SECRETS=true for local dev only", envName)
+}
+
+func looksLikeDefaultSecret(v string) bool {
+	lower := strings.ToLower(v)
+	for _, marker := range []string{
+		"change_me", "change-me", "changeme", "ganti_ini", "ganti-ini",
+		"dev_only", "dev-only", "example", "placeholder", "insecure",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	switch lower {
+	case "admin12345", "pqc", "postgres", "password", "secret", "12345678":
+		return true
+	}
+	return false
 }

@@ -17,6 +17,12 @@
 # drain the queue onto the chain.
 #
 # Secrets below are DEV defaults; override in .env (see .env.example).
+# ALLOW_INSECURE_DEV_SECRETS=true on both services below is what lets the
+# server start with those DEV-default values at all — without it (the safe
+# default), ttd and ledger-api refuse to start on any secret matching a known
+# placeholder (docs/adr/0006 security checklist #9). Removing that line here
+# is exactly what a real, non-dev deployment of this compose file should do,
+# alongside actually setting the env vars it currently falls back on.
 
 name: office
 
@@ -79,6 +85,7 @@ services:
       SERVER_NAME: "${SERVER_NAME:-Arsip Pusat}"
       ARCHIVE_TEMP_DIR: /data/uploads
       ARCHIVE_MAX_BYTES: "${ARCHIVE_MAX_BYTES:-21474836480}"   # 20 GiB per file
+      ALLOW_INSECURE_DEV_SECRETS: "${ALLOW_INSECURE_DEV_SECRETS:-true}"
     volumes: [ledger_keystore:/keystore, ledger_uploads:/data/uploads]
 
   ttd:
@@ -111,6 +118,7 @@ services:
       # to disable; set PQC_TLS_CERT_FILE/PQC_TLS_KEY_FILE (mounted in) to bring a
       # real certificate instead of the self-signed one.
       PQC_TLS_HOSTS: "${TLS_HOSTS-localhost,127.0.0.1}"
+      ALLOW_INSECURE_DEV_SECRETS: "${ALLOW_INSECURE_DEV_SECRETS:-true}"
     volumes: [ttd_ca:/ca, ttd_objects:/objects, ttd_tls:/tls]
     ports:
       - "${PQC_APP_PORT:-18099}:8099"    # the app: /app/ + /admin + /api/v1 + /office (HTTP)

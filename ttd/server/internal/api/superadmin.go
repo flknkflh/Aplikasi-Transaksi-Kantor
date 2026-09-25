@@ -329,6 +329,8 @@ func (s *Server) checkNewPassword(a saAccount, pw string) string {
 	switch {
 	case utf8.RuneCountInString(pw) < saMinPassword:
 		return "kata sandi baru minimal 12 karakter"
+	case utf8.RuneCountInString(pw) > auth.MaxPasswordLength:
+		return "kata sandi baru maksimal 128 karakter"
 	case auth.VerifyPassword(pw, a.acct.PasswordHash):
 		return "kata sandi baru harus berbeda dari yang lama"
 	case strings.EqualFold(pw, a.acct.Email):

@@ -53,8 +53,8 @@ func (s *Server) hCreateAdmin(w http.ResponseWriter, r *http.Request) {
 	if u == "" {
 		u = strings.TrimSpace(in.Email)
 	}
-	if u == "" || len(in.Password) < 8 {
-		writeErr(w, http.StatusBadRequest, "username dan kata sandi minimal 8 karakter wajib diisi")
+	if u == "" || len(in.Password) < 8 || len(in.Password) > auth.MaxPasswordLength {
+		writeErr(w, http.StatusBadRequest, "username dan kata sandi (8-128 karakter) wajib diisi")
 		return
 	}
 	hash, err := auth.HashPassword(in.Password)
@@ -126,8 +126,8 @@ func (s *Server) hUpdateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Password != "" {
-		if len(in.Password) < 8 {
-			writeErr(w, http.StatusBadRequest, "kata sandi minimal 8 karakter")
+		if len(in.Password) < 8 || len(in.Password) > auth.MaxPasswordLength {
+			writeErr(w, http.StatusBadRequest, "kata sandi harus 8-128 karakter")
 			return
 		}
 		hash, herr := auth.HashPassword(in.Password)

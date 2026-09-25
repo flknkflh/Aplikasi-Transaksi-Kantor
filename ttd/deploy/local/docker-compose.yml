@@ -55,6 +55,11 @@ services:
       PQC_MAX_UPLOAD_MB: "${PQC_MAX_UPLOAD_MB:-1024}"
       PQC_MAX_STAMP_MB: "${PQC_MAX_STAMP_MB:-150}"
       PQC_MAX_VERIFY_MB: "${PQC_MAX_VERIFY_MB:-350}"
+      # Without this, the server refuses to start on the PQC_JWT_SECRET/
+      # PQC_BOOTSTRAP_ADMIN_PASSWORD placeholder defaults above (docs/adr/0006
+      # security checklist #9). Set a real .env (see .env.example) and remove
+      # this line for anything beyond local dev.
+      ALLOW_INSECURE_DEV_SECRETS: "${ALLOW_INSECURE_DEV_SECRETS:-true}"
     volumes:
       - cadata:/ca
       - objdata:/objects

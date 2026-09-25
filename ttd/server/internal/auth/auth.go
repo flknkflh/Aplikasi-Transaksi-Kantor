@@ -26,10 +26,19 @@ const (
 	argonThreads = 4
 	argonKeyLen  = 32
 	saltLen      = 16
+
+	// MaxPasswordLength caps password input accepted anywhere in this server.
+	// Argon2id's cost scales with input size, so an unbounded password body is a
+	// hashing-cost DoS vector (docs/adr/0006 security checklist #6); enforced here
+	// too, not just at each intake handler, so no future call site can skip it.
+	MaxPasswordLength = 128
 )
 
 // HashPassword returns an encoded Argon2id hash ("$argon2id$v=19$m=...,t=...,p=...$salt$hash").
 func HashPassword(password string) (string, error) {
+	if len(password) > MaxPasswordLength {
+		return "", errors.New("auth: password too long")
+	}
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -42,6 +51,9 @@ func HashPassword(password string) (string, error) {
 
 // VerifyPassword reports whether password matches the encoded hash.
 func VerifyPassword(password, encoded string) bool {
+	if len(password) > MaxPasswordLength {
+		return false
+	}
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return false

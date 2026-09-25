@@ -34,8 +34,8 @@ func (s *Server) hRegister(w http.ResponseWriter, r *http.Request) {
 		Position     string `json:"position"`
 		NIP          string `json:"nip"`
 	}
-	if err := decode(r, &in); err != nil || in.Email == "" || len(in.Password) < 8 {
-		writeErr(w, http.StatusBadRequest, "email and an 8+ char password are required")
+	if err := decode(r, &in); err != nil || in.Email == "" || len(in.Password) < 8 || len(in.Password) > auth.MaxPasswordLength {
+		writeErr(w, http.StatusBadRequest, "email and an 8-128 char password are required")
 		return
 	}
 	hash, err := auth.HashPassword(in.Password)
