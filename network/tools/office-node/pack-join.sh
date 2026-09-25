@@ -9,14 +9,23 @@
 # joined by anyone who merely has the software).
 #
 #   cd network && bash tools/office-node/pack-join.sh "Kantor Cabang C"
+#   ORDERER_REACHABLE_ADDR=192.168.1.10:7050 bash tools/office-node/pack-join.sh "Kantor Cabang C"
 #
 # Requires: bootstrap.sh already run once (ca_org2 + orderer + peer0.org2
 # containers up — this reads their already-issued material and, for the new
 # peer, talks to the live ca_org2 enrollment API on localhost:8054).
+#
+# ORDERER_REACHABLE_ADDR (env, optional): the orderer's channel-config hostname
+# ("orderer.example.com:7050") is normally unresolvable from an office machine
+# outside this Docker network (docs/adr/0011 bug #4) — office-node needs to
+# know where to actually dial instead. Defaults to 127.0.0.1:7050 (this
+# machine, e.g. same-machine testing); for a genuinely remote office, set this
+# to the orderer host's real LAN/public address:port.
 set -euo pipefail
 
 ORG_LABEL="${1:?usage: pack-join.sh \"<nama kantor>\"}"
 PEER_ID="${2:-peer$(date +%s | tail -c 4)}"   # unique-ish peer name, e.g. peer1737
+ORDERER_REACHABLE_ADDR="${ORDERER_REACHABLE_ADDR:-127.0.0.1:7050}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NETWORK_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -62,22 +71,29 @@ echo ">> assembling the join package"
 OUT_DIR="${NETWORK_DIR}/tools/office-node/packages"
 mkdir -p "${OUT_DIR}"
 STAGE="$(mktemp -d)"
-mkdir -p "${STAGE}/msp" "${STAGE}/tls" "${STAGE}/admin-msp"
+mkdir -p "${STAGE}/msp" "${STAGE}/tls"
 cp -r "${PEER_HOME}/msp/"* "${STAGE}/msp/"
 cp "${PEER_HOME}/tls/ca.crt" "${PEER_HOME}/tls/server.crt" "${PEER_HOME}/tls/server.key" "${STAGE}/tls/"
 cp "${ORGS_DIR}/ordererOrganizations/example.com/msp/tlscacerts/"* "${STAGE}/orderer-tls-ca.crt"
 cp "${TESTNET_DIR}/channel-artifacts/ledgerchannel.block" "${STAGE}/genesis.block"
-# `peer channel join` (and later chaincode approve/install) is an administrative
-# act on the org's MSP, not something the peer's own server identity is allowed
-# to do (Fabric's default Admins policy requires OU=admin) — so office-node needs
-# an admin identity too, used ONLY for these one-off local CLI calls, never for
-# the long-running peer process. v1 SIMPLIFICATION, noted in ADR-0011: this reuses
-# Org2's one existing admin identity rather than minting a join-scoped one, so
-# every office's package carries the same org-wide administrative credential.
-# The more correct version has the CENTRAL admin run the join remotely instead
-# (targeting the new peer's address from its own held admin identity, never
-# distributed) — left as a follow-up once this mechanism is proven.
-cp -r "${ORGS_DIR}/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp/"* "${STAGE}/admin-msp/"
+# `peer channel join` is an administrative act on the org's MSP, not something the
+# peer's own server identity is allowed to do (Fabric's default Admins policy
+# requires OU=admin). Fabric has no narrower "can only join a channel" role — any
+# OU=admin identity can do any admin operation — so the only real choice is WHO
+# holds that identity, not how it's scoped:
+#   INCLUDE_ADMIN_MSP=true  (default): bundle a copy of the org's admin MSP into
+#     the package; office-node joins itself on first `start`. Simple, one file to
+#     hand over, but every office's package then carries the same org-wide
+#     administrative credential.
+#   INCLUDE_ADMIN_MSP=false: office-node never receives an admin identity at all;
+#     it starts the peer and waits. The central admin runs remote-join.sh instead,
+#     using ITS OWN retained admin identity, which never leaves this machine.
+#     Stronger, at the cost of one more manual step per office.
+INCLUDE_ADMIN_MSP="${INCLUDE_ADMIN_MSP:-true}"
+if [ "${INCLUDE_ADMIN_MSP}" = "true" ]; then
+  mkdir -p "${STAGE}/admin-msp"
+  cp -r "${ORGS_DIR}/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp/"* "${STAGE}/admin-msp/"
+fi
 
 cat > "${STAGE}/join.json" <<JSON
 {
@@ -89,7 +105,8 @@ cat > "${STAGE}/join.json" <<JSON
   "peer_chaincode_port": 9062,
   "peer_operations_port": 9455,
   "orderer_address": "orderer.example.com:7050",
-  "orderer_hostname": "orderer.example.com"
+  "orderer_hostname": "orderer.example.com",
+  "orderer_reachable_addr": "${ORDERER_REACHABLE_ADDR}"
 }
 JSON
 
@@ -100,9 +117,18 @@ rm -rf "${STAGE}"
 echo
 echo "  Join package : ${PKG}"
 echo "  Untuk        : ${ORG_LABEL} (identitas: ${PEER_FQDN}, MSP Org2MSP)"
+echo "  Orderer dituju di alamat : ${ORDERER_REACHABLE_ADDR}"
+echo "    (kalau kantor itu di komputer/jaringan lain, ulangi dengan"
+echo "     ORDERER_REACHABLE_ADDR=<ip-lan-server-ini>:7050 sebelum mengirim paketnya)"
 echo "  Kirim file itu ke komputer kantor tsb, lalu di sana jalankan:"
 echo "    office-node join ${PKG##*/}"
 echo "    office-node start"
+if [ "${INCLUDE_ADMIN_MSP}" != "true" ]; then
+  echo
+  echo "  Paket ini TIDAK berisi kredensial admin (INCLUDE_ADMIN_MSP=false) — setelah"
+  echo "  peer kantor itu \`start\` dan bisa dijangkau, join-kan dari sini dengan:"
+  echo "    bash tools/office-node/remote-join.sh ${PEER_ID} <alamat-peer-kantor>:9061"
+fi
 echo
 echo "  PENTING: file ini berisi kunci privat identitas kantor tsb di jaringan blockchain —"
 echo "  kirim lewat jalur aman (bukan email tanpa enkripsi/chat publik), dan hapus salinan di sini"

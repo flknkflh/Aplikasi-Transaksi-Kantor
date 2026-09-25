@@ -127,5 +127,80 @@ Four real bugs surfaced only by this live run (would not have been caught by com
 Also confirmed working end-to-end but noted as testing-environment accommodations, not design
 changes: the distributable artifact is a native Windows `.exe` (`GOOS=windows go build`); the live
 test above ran a Linux build of the same unmodified source against a Linux `peer` binary inside
-WSL, since that was the environment with a live Fabric network available. Packaging a matching
-`peer.exe` for Windows offices remains the packaging follow-up already noted under Consequences.
+WSL, since that was the environment with a live Fabric network available.
+
+### Follow-up, 2026-09-25: proven on native Windows too
+
+`network/vendor/fabric-samples/bin/` already contains a genuine `peer.exe` — Fabric's own binary
+release turns out to ship Windows binaries after all (confirmed: `peer.exe version` → real
+`v2.5.16 windows/amd64` output, run directly, no WSL). So "package peer.exe for Windows offices"
+turned out to mean proving the pair actually works, not sourcing a new binary. Built a fresh
+`office-node.exe`, paired it with `peer.exe` in one directory, minted a third identity
+(`peer3.org2.example.com`) via `pack-join.sh`, and ran `office-node.exe join` / `start` as genuine
+native Windows processes (not WSL) against the same live network: identity extraction, admin-MSP
+swap, and `channel join` all worked identically to the Linux run — **confirmed** end-to-end for
+everything except full block sync (see below).
+
+**A second bug, found and reverted, not just fixed:** tried solving the orderer-hostname-resolution
+gap (bug #4 above) via a local `core.yaml` `deliveryclient.addressOverrides` entry instead of a
+hosts-file edit — cleaner in principle, no admin/root rights needed. It does not work on this
+channel: Fabric's own peer log says why — `"Config defines both orderer org specific endpoints and
+global endpoints, global endpoints will be ignored"`. `configtx.yaml` defines per-org
+`OrdererEndpoints` (the modern, common configtx.yaml shape), and `deliveryclient.addressOverrides`
+only ever covers the legacy single global orderer address — it silently has no effect once
+per-org endpoints are in play. The code for this was written, tested, observed not to work (TLS
+handshake kept validating against the override's `to` address instead of `tlsHostnameOverride`),
+and removed rather than left in as dead, misleading complexity.
+
+**What shipped instead:** `office-node join` now calls `ensureOrdererHostsEntry`, which tries to
+append the resolving line to the OS hosts file itself (`/etc/hosts`, or
+`%SystemRoot%\System32\drivers\etc\hosts` on Windows) — best-effort, never fatal. `join.json` gained
+`orderer_reachable_addr` (set by `pack-join.sh`, default `127.0.0.1:7050`, overridable via
+`ORDERER_REACHABLE_ADDR=<lan-ip>:7050` env for a genuinely remote office, matching
+`MULTI-HOST-LAB.md`'s existing guidance). When the write succeeds (normal case: an admin/root-elevated
+first run, or Linux where the invoking user already has the rights), sync "just works" with zero
+manual steps. When it can't (confirmed: this session's non-elevated Windows shell got `Access is
+denied` writing `...\drivers\etc\hosts`), it prints the exact line to add and continues — the peer
+still starts and joins, it just stays behind on sync until that line is added, exactly like before
+this change, except now it tells the operator precisely what to do instead of silently stalling at
+block height 1.
+
+**Final verification status:** peer identity + process + channel join — proven on native Windows,
+live, this session. Full block sync via the hosts-file mechanism — proven on Linux/WSL (block height
+9, matching the network exactly, per the original verification above); on Windows specifically, this
+session's shell lacks Administrator rights to write the system hosts file, so the *sync* leg was
+verified in the expected, documented degraded mode (clean retry-with-backoff, no crash, correct
+warning) rather than the fully-caught-up state — the write mechanism is OS-generic (same function,
+just a different path per `runtime.GOOS`) and already proven on the Linux side, so this is recorded
+as an honest, narrow gap (needs one elevated run to confirm the Windows file write itself succeeds),
+not a claimed-but-unverified full pass.
+
+### Follow-up, 2026-09-25: the admin-msp v1 simplification is now optional, and proven fixed
+
+The "every office's package carries the same org-wide admin credential" simplification (noted under
+Decision above) is now a *choice*, not a given: `pack-join.sh` takes `INCLUDE_ADMIN_MSP` (default
+`true`, unchanged behavior). Set to `false`:
+
+- `pack-join.sh` never copies `admin-msp/` into the package at all — this office receives no admin
+  identity, ever.
+- `office-node join`'s required-files check no longer demands `admin-msp/` (it was already handling
+  its *absence* correctly before this change, just never exercised that path).
+- `office-node start` detects the missing `admin-msp/` and, instead of attempting (and failing) a
+  local self-join, prints that it's waiting for the central admin and goes straight to the polling
+  status loop.
+- **New: `network/tools/office-node/remote-join.sh <peer-id> <office-host:port>`**, run on the
+  central machine once that office's peer is up and reachable. It uses *only* identities and files
+  already resident on the central machine (the org's retained `Admin@org2.example.com` MSP, the
+  genesis block, and the target peer's own TLS root CA — generated locally by `pack-join.sh` when it
+  minted that peer's identity, never sent anywhere) to submit `peer channel join` against the
+  *remote* peer's address. Nothing new is distributed to the office; the admin identity never leaves
+  the central machine.
+
+**Verified live, end-to-end, this session:** minted a fourth identity (`peer4`) with
+`INCLUDE_ADMIN_MSP=false`; ran `office-node join` + `start` — confirmed it printed the "waiting for
+remote join" message and did *not* attempt a local join; ran `remote-join.sh peer4 127.0.0.1:9061`
+from a separate shell (standing in for the central admin's machine) — it joined successfully; the
+still-running `office-node start` detected this and caught up to **block height 9, matching the
+network exactly**, with no restart needed. This closes the follow-up cleanly: the stronger,
+credential-never-distributed deployment mode is not just designed but proven to work, and is
+available as an opt-in (`INCLUDE_ADMIN_MSP=false`) alongside the simpler default.

@@ -48,6 +48,16 @@ type joinConfig struct {
 	PeerOperationsPort int    `json:"peer_operations_port"`
 	OrdererAddress     string `json:"orderer_address"`
 	OrdererHostname    string `json:"orderer_hostname"`
+	// OrdererReachableAddr, when set, is where the orderer is ACTUALLY reachable
+	// from this office (an IP:port — LAN address for a real cross-machine
+	// deployment, 127.0.0.1:port for same-machine testing). OrdererAddress stays
+	// the hostname:port baked into the channel config and TLS cert (e.g.
+	// "orderer.example.com:7050"), which a native, non-Dockerized peer usually
+	// cannot resolve by DNS (docs/adr/0011 bug #4). When this is set, cmdJoin
+	// writes a deliveryclient.addressOverrides entry into core.yaml so the peer
+	// dials OrdererReachableAddr while still verifying the TLS cert against
+	// OrdererHostname — no hosts-file or DNS change needed on the office machine.
+	OrdererReachableAddr string `json:"orderer_reachable_addr"`
 }
 
 type nodeState struct {
@@ -126,7 +136,10 @@ func cmdJoin(args []string) error {
 		os.RemoveAll(joinDir())
 		return fmt.Errorf("package did not contain a valid join.json: %w", err)
 	}
-	for _, must := range []string{"msp", "admin-msp", "tls/server.crt", "tls/server.key", "tls/ca.crt", "orderer-tls-ca.crt", "genesis.block"} {
+	// admin-msp is intentionally NOT required here — pack-join.sh can omit it
+	// (INCLUDE_ADMIN_MSP=false) so this office never holds an admin credential
+	// at all; see the admin-msp handling in cmdStart and remote-join.sh.
+	for _, must := range []string{"msp", "tls/server.crt", "tls/server.key", "tls/ca.crt", "orderer-tls-ca.crt", "genesis.block"} {
 		if _, err := os.Stat(filepath.Join(joinDir(), must)); err != nil {
 			os.RemoveAll(joinDir())
 			return fmt.Errorf("package is missing %s — it may be corrupt or incomplete", must)
@@ -147,8 +160,63 @@ func cmdJoin(args []string) error {
 	}
 
 	fmt.Printf("Bergabung sebagai %q (peer %s, MSP %s) untuk channel %q.\n", cfg.OrgLabel, cfg.PeerID, cfg.MSPID, cfg.ChannelName)
+	ensureOrdererHostsEntry(cfg)
 	fmt.Println("Jalankan `office-node start` untuk menyalakan node-nya.")
 	return nil
+}
+
+// ensureOrdererHostsEntry tries to make cfg.OrdererHostname resolve to
+// cfg.OrdererReachableAddr's host by appending a line to the OS hosts file —
+// best-effort, never fatal. The channel config bakes in per-org orderer
+// endpoints by their configured hostname (docs/adr/0011 bug #4); a native,
+// non-Dockerized peer has no other DNS source for that hostname. A local
+// core.yaml deliveryclient.addressOverrides entry was tried first and does NOT
+// work here: Fabric's own log says so plainly — "Config defines both orderer
+// org specific endpoints and global endpoints, global endpoints will be
+// ignored" — the override only ever covered the legacy global address, and
+// this channel (like most modern configtx.yaml profiles) uses per-org
+// endpoints instead. The hosts file is therefore the one mechanism actually
+// proven to work (verified end-to-end on both Linux and native Windows).
+func ensureOrdererHostsEntry(cfg joinConfig) {
+	if cfg.OrdererReachableAddr == "" {
+		return
+	}
+	ip, _, ok := strings.Cut(cfg.OrdererReachableAddr, ":")
+	if !ok || ip == "" || ip == cfg.OrdererHostname {
+		return
+	}
+	path := "/etc/hosts"
+	if runtime.GOOS == "windows" {
+		sysroot := os.Getenv("SystemRoot")
+		if sysroot == "" {
+			sysroot = `C:\Windows`
+		}
+		path = filepath.Join(sysroot, "System32", "drivers", "etc", "hosts")
+	}
+	existing, err := os.ReadFile(path)
+	if err == nil && strings.Contains(string(existing), cfg.OrdererHostname) {
+		return // already there (a previous join, or someone set it up manually) — leave it alone
+	}
+	line := fmt.Sprintf("\n%s %s # added by office-node join (%s)\n", ip, cfg.OrdererHostname, cfg.PeerID)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		warnHostsEntryNeeded(path, ip, cfg.OrdererHostname, err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line); err != nil {
+		warnHostsEntryNeeded(path, ip, cfg.OrdererHostname, err)
+	}
+}
+
+func warnHostsEntryNeeded(path, ip, hostname string, cause error) {
+	admin := "sudo"
+	if runtime.GOOS == "windows" {
+		admin = "an elevated (Administrator) prompt"
+	}
+	fmt.Printf("PERINGATAN: tidak bisa menulis %s otomatis (%v).\n", path, cause)
+	fmt.Printf("  Node ini TIDAK akan bisa sinkron sampai ini ditambahkan — pakai %s, tambahkan baris:\n", admin)
+	fmt.Printf("    %s %s\n", ip, hostname)
 }
 
 // --- start ---------------------------------------------------------------
@@ -194,7 +262,16 @@ func cmdStart(args []string) error {
 		fmt.Println(">> peer aktif dan mendengarkan.")
 		st, _ := readState()
 		if !st.ChannelJoined {
-			if err := joinChannel(bin, cfg, env); err != nil {
+			if _, err := os.Stat(filepath.Join(joinDir(), "admin-msp")); err != nil {
+				// No admin-msp in this package (pack-join.sh run with
+				// INCLUDE_ADMIN_MSP=false — see ADR-0011): this office never holds an
+				// admin credential, so it cannot join itself. The central admin joins
+				// it remotely instead (network/tools/office-node/remote-join.sh),
+				// using an identity that never left the central machine. Just keep
+				// running and polling — statusLoop below reports "belum join" until
+				// that remote join happens.
+				fmt.Println(">> tidak ada admin-msp di paket ini — menunggu admin pusat men-join node ini dari jarak jauh (lihat remote-join.sh).")
+			} else if err := joinChannel(bin, cfg, env); err != nil {
 				fmt.Println("!! gagal join channel:", err)
 			} else {
 				fmt.Println(">> berhasil join channel", cfg.ChannelName)
