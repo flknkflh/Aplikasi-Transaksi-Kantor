@@ -7,13 +7,13 @@ go 1.27.0
 // imported (Rencana V1 §3.2).
 require (
 	example.internal/pqc-pdf-sign/core v0.0.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/pdfcpu/pdfcpu v0.15.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.57.0
-	golang.org/x/image v0.45.0
-	golang.org/x/time v0.15.0
+	golang.org/x/image v0.46.0
+	golang.org/x/time v0.16.0
 )
 
 require (
