@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     cd /src/tools/ca-admin && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ca-admin . && \
     cd /src/tools/tls-selfsigned && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tls-selfsigned .
 
-FROM alpine:3.20
+FROM alpine:3.24
 # tzdata: the stamp caption prints the server date in Asia/Jakarta.
 RUN apk add --no-cache ca-certificates curl tzdata
 COPY --from=build /out/api /usr/local/bin/api
